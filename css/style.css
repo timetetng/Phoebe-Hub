@@ -638,9 +638,15 @@ body {
 }
 
 .admin-btn.tag {
-    background: linear-gradient(135deg, #AB47BC 0%, #8E24AA 100%);
+    background: linear-gradient(135deg, #FF7043 0%, #E64A19 100%);
     color: white;
-    box-shadow: 0 2px 8px rgba(142, 36, 170, 0.2);
+    box-shadow: 0 2px 8px rgba(230, 74, 25, 0.2);
+}
+
+.admin-btn.tag-purple {
+    background: linear-gradient(135deg, #7E57C2 0%, #5E35B1 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(94, 53, 177, 0.2);
 }
 
 .admin-btn:hover {
@@ -981,7 +987,8 @@ body {
     backdrop-filter: blur(10px);
 }
 
-.modal-overlay.active {
+.modal-overlay.active,
+.modal-overlay.show {
     display: flex;
 }
 
@@ -1049,6 +1056,106 @@ body {
     color: var(--primary);
     background: var(--secondary);
     transform: rotate(90deg);
+}
+
+/* 公告弹窗 */
+.notice-content {
+    max-width: 420px;
+    padding: 45px 35px;
+    text-align: center;
+}
+
+.notice-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+}
+
+.notice-image {
+    width: 90px;
+    height: 90px;
+    background: linear-gradient(135deg, #FFD54F 0%, #FF8C42 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    box-shadow: 0 10px 30px rgba(255, 140, 66, 0.35);
+    animation: pulse 2s infinite ease-in-out;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+}
+
+.notice-title {
+    font-size: 24px;
+    font-weight: 900;
+    color: var(--text-dark);
+    margin: 0;
+}
+
+.notice-text {
+    font-size: 15px;
+    color: var(--text-light);
+    line-height: 1.7;
+    margin: 0;
+    font-weight: 600;
+}
+
+.notice-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, #24292e 0%, #000000 100%);
+    color: white;
+    text-decoration: none;
+    padding: 14px 28px;
+    border-radius: 30px;
+    font-weight: 800;
+    font-size: 15px;
+    margin-top: 10px;
+    transition: all 0.3s ease;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25);
+}
+
+.notice-link:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.35);
+}
+
+.notice-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    margin-top: 10px;
+}
+
+.notice-starred-btn {
+    background: transparent;
+    color: var(--text-light);
+    border: 2px solid #ddd;
+    padding: 12px 28px;
+    border-radius: 50px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.notice-starred-btn:hover {
+    border-color: #FF8C42;
+    color: #FF8C42;
+    background: rgba(255, 140, 66, 0.08);
+}
+
+.github-icon {
+    width: 22px;
+    height: 22px;
 }
 
 .form-group {

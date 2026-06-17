@@ -188,11 +188,15 @@ function renderMemes() {
             filtered = filtered.filter(m => !m.isGif);
         } else if (currentCategory === 'gif') {
             filtered = filtered.filter(m => m.isGif);
+        } else if (currentCategory === 'featured' || currentCategory === 'recommended') {
+            filtered = filtered.filter(m => {
+                const tags = m.tags || [];
+                return tags.includes(currentCategory);
+            });
         } else {
             filtered = filtered.filter(m => {
                 const cats = m.category || [];
-                const tags = m.tags || [];
-                return cats.includes(currentCategory) || tags.includes(currentCategory);
+                return cats.includes(currentCategory);
             });
         }
     }
@@ -256,13 +260,7 @@ function renderMemes() {
                         下载
                     </button>
                 </div>
-                ${isAdmin ? `
-                <div class="admin-actions">
-                    <button class="admin-btn edit" onclick="event.stopPropagation(); editMemeName('${meme.firebaseId || meme.id}')">改名</button>
-                    <button class="admin-btn delete" onclick="event.stopPropagation(); deleteMeme('${meme.firebaseId || meme.id}')">删除</button>
-                    <button class="admin-btn tag" onclick="event.stopPropagation(); editMemeTags('${meme.firebaseId || meme.id}')">标签</button>
-                </div>
-                ` : ''}
+                ${isAdmin ? renderAdminActions(meme) : ''}
             </div>
         </div>
     `).join('');
@@ -270,16 +268,12 @@ function renderMemes() {
 
 // 渲染表情包的标签
 function renderMemeTags(meme) {
-    const allTags = [...(meme.category || []), ...(meme.tags || [])];
-    const uniqueTags = [...new Set(allTags)].filter(tag => tag && tag !== 'static' && tag !== 'gif');
+    const tags = meme.tags || [];
+    const uniqueTags = [...new Set(tags)].filter(tag => tag && tag !== 'static' && tag !== 'gif');
 
     if (uniqueTags.length === 0) return '';
 
     const tagNames = {
-        'cute': '超可爱',
-        'meme': '梗图',
-        'maid': '女仆装',
-        'funny': '搞笑',
         'featured': '精选',
         'recommended': '站长推荐'
     };
@@ -289,6 +283,26 @@ function renderMemeTags(meme) {
             ${uniqueTags.map(tag => `
                 <span class="meme-tag ${tag}">${tagNames[tag] || tag}</span>
             `).join('')}
+        </div>
+    `;
+}
+
+// 渲染管理员操作按钮
+function renderAdminActions(meme) {
+    const tags = meme.tags || [];
+    const isFeatured = tags.includes('featured');
+    const isRecommended = tags.includes('recommended');
+
+    return `
+        <div class="admin-actions">
+            <button class="admin-btn edit" onclick="event.stopPropagation(); editMemeName('${meme.firebaseId || meme.id}')">改名</button>
+            <button class="admin-btn tag" onclick="event.stopPropagation(); toggleTag('${meme.firebaseId || meme.id}', 'featured')">
+                ${isFeatured ? '移除精选' : '设为精选'}
+            </button>
+            <button class="admin-btn tag-purple" onclick="event.stopPropagation(); toggleTag('${meme.firebaseId || meme.id}', 'recommended')">
+                ${isRecommended ? '移除推荐' : '站长推荐'}
+            </button>
+            <button class="admin-btn delete" onclick="event.stopPropagation(); deleteMeme('${meme.firebaseId || meme.id}')">删除</button>
         </div>
     `;
 }
@@ -352,9 +366,10 @@ async function downloadMeme(id) {
     updateHotList();
 
     // 执行下载
+    const extension = meme.isGif ? 'gif' : 'jpg';
     const link = document.createElement('a');
     link.href = meme.url;
-    link.download = `${meme.title || '菲比'}.jpg`;
+    link.download = `${meme.title || '菲比'}.${extension}`;
     link.target = '_blank';
     document.body.appendChild(link);
     link.click();
@@ -531,18 +546,19 @@ async function handleUpload(event) {
         }
 
         try {
-            // 1. 将图片转为 Base64
-            const base64Image = await fileToBase64(file);
+            // 1. 判断是否为 GIF
+            const isGif = file.type === 'image/gif';
 
-            // 2. 压缩图片（如果太大）
-            const compressedImage = await compressImage(base64Image, file.type, 1024, 0.85);
+            // 2. 上传图片到 Cloudinary
+            showToast('正在上传图片到云端...');
+            const imageUrl = await uploadToCloudinary(file);
 
-            // 3. 保存到 Firestore pending 集合
+            // 3. 保存图片 URL 到 Firestore pending 集合
             await db.collection('pending').add({
                 title: name,
-                url: compressedImage,
+                url: imageUrl,
                 category: [category],
-                isGif: file.type === 'image/gif',
+                isGif: isGif,
                 date: new Date().toISOString().split('T')[0],
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 status: 'pending'
@@ -796,31 +812,29 @@ async function editMemeName(id) {
     updateHotList();
 }
 
-// 修改表情包的标签（精选、站长推荐等）
-async function editMemeTags(id) {
+// 切换表情包的精选/推荐标签
+async function toggleTag(id, tagName) {
     if (!isAdmin) return;
 
     const meme = memesData.find(m => (m.firebaseId || m.id) == id);
     if (!meme) return;
 
-    const currentTags = [...new Set([...(meme.category || []), ...(meme.tags || [])])].filter(t => t && t !== 'static' && t !== 'gif');
-    const input = prompt('请输入标签，用逗号分隔：\n可选：cute（超可爱）, meme（梗图）, maid（女仆装）, funny（搞笑）, featured（精选）, recommended（站长推荐）\n\n当前标签：' + (currentTags.join(', ') || '无'), currentTags.join(', '));
+    const tags = meme.tags || [];
+    const hasTag = tags.includes(tagName);
 
-    if (input === null) return;
-
-    const newTags = input.split(',').map(t => t.trim()).filter(t => t !== '');
-
-    // 保持 category 中的 cute/meme/maid/funny，把 featured/recommended 放到 tags
-    const categoryTags = newTags.filter(t => ['cute', 'meme', 'maid', 'funny'].includes(t));
-    const specialTags = newTags.filter(t => ['featured', 'recommended'].includes(t));
+    let newTags;
+    if (hasTag) {
+        newTags = tags.filter(t => t !== tagName);
+    } else {
+        newTags = [...tags, tagName];
+    }
 
     if (firebaseEnabled && meme.firebaseId) {
         try {
             await db.collection('memes').doc(meme.firebaseId).update({
-                category: categoryTags.length > 0 ? categoryTags : ['cute'],
-                tags: specialTags
+                tags: newTags
             });
-            showToast('标签修改成功！');
+            showToast(hasTag ? '已移除' : '已添加');
         } catch (e) {
             console.error('修改标签失败:', e);
             alert('修改标签失败: ' + e.message);
@@ -828,8 +842,7 @@ async function editMemeTags(id) {
         }
     }
 
-    meme.category = categoryTags.length > 0 ? categoryTags : ['cute'];
-    meme.tags = specialTags;
+    meme.tags = newTags;
     renderMemes();
     updateHotList();
 }
@@ -842,6 +855,34 @@ function fileToBase64(file) {
         reader.onerror = reject;
         reader.readAsDataURL(file);
     });
+}
+
+// 上传图片到 Cloudinary
+async function uploadToCloudinary(file) {
+    if (!cloudinaryConfig || !cloudinaryConfig.cloudName || !cloudinaryConfig.uploadPreset) {
+        throw new Error('Cloudinary 配置不完整，请检查 js/cloudinary-config.js');
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', cloudinaryConfig.uploadPreset);
+    formData.append('folder', 'phoebe_hub');
+
+    const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/image/upload`,
+        {
+            method: 'POST',
+            body: formData
+        }
+    );
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `上传失败: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.secure_url;
 }
 
 // 压缩图片
@@ -911,5 +952,57 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeLightbox();
         closeUploadModal();
+        closeNoticeModal();
     }
 });
+
+// 公告弹窗
+document.addEventListener('DOMContentLoaded', () => {
+    // 检查是否需要显示公告
+    if (shouldShowNotice()) {
+        setTimeout(() => {
+            openNoticeModal();
+        }, 1500);
+    }
+});
+
+function shouldShowNotice() {
+    const now = Date.now();
+
+    // 如果点了"我已点星"，24 小时内不显示
+    const starredAt = localStorage.getItem('phoebeNoticeStarredAt');
+    if (starredAt && now - parseInt(starredAt) < 24 * 60 * 60 * 1000) {
+        return false;
+    }
+
+    // 如果点了关闭，10 分钟内不显示
+    const closedAt = localStorage.getItem('phoebeNoticeClosedAt');
+    if (closedAt && now - parseInt(closedAt) < 10 * 60 * 1000) {
+        return false;
+    }
+
+    return true;
+}
+
+function openNoticeModal() {
+    const modal = document.getElementById('noticeModal');
+    if (modal) {
+        modal.classList.add('show');
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function closeNoticeModal() {
+    const modal = document.getElementById('noticeModal');
+    if (modal) {
+        modal.classList.remove('show');
+        document.body.style.overflow = '';
+    }
+    localStorage.setItem('phoebeNoticeClosedAt', Date.now().toString());
+}
+
+function markNoticeStarred() {
+    localStorage.setItem('phoebeNoticeStarredAt', Date.now().toString());
+    closeNoticeModal();
+    showToast('感谢你的 Star！菲比啾比 ~');
+}
