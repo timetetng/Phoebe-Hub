@@ -1,78 +1,153 @@
-// 表情包数据 - 预置4张本地图片
-let memesData = [
-    {
-        id: 1,
-        title: "誓死效忠米哈游",
-        url: "images/誓死效忠米哈游.jpg",
-        category: ["meme"],
-        views: 15234,
-        downloads: 3421,
-        date: "2025-06-15",
-        isGif: false,
-        hot: 98
-    },
-    {
-        id: 2,
-        title: "菲比猪鼻",
-        url: "images/菲比猪鼻.jpg",
-        category: ["cute"],
-        views: 28567,
-        downloads: 5623,
-        date: "2025-06-14",
-        isGif: false,
-        hot: 100
-    },
-    {
-        id: 3,
-        title: "你这无礼之徒",
-        url: "images/你这无礼之徒.jpg",
-        category: ["meme"],
-        views: 19876,
-        downloads: 4456,
-        date: "2025-06-13",
-        isGif: false,
-        hot: 95
-    },
-    {
-        id: 4,
-        title: "少爷，该启动鸣潮了哈哈",
-        url: "images/少爷，该启动鸣潮了哈哈.jpg",
-        category: ["cute"],
-        views: 32109,
-        downloads: 6789,
-        date: "2025-06-12",
-        isGif: false,
-        hot: 99
+// 初始化 Firebase
+let db = null;
+let firebaseApp = null;
+let firebaseEnabled = false;
+
+try {
+    if (typeof firebase !== 'undefined' && firebaseConfig && firebaseConfig.projectId !== 'YOUR_PROJECT_ID') {
+        firebaseApp = firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+        firebaseEnabled = true;
+        console.log('Firebase 已连接');
+    } else {
+        console.warn('Firebase 未配置，使用本地数据');
     }
-];
+} catch (e) {
+    console.error('Firebase 初始化失败:', e);
+}
 
-// 待审核数据
+// 本地备用数据
+let localMemesData = [];
+let memesData = [];
 let pendingData = [];
-
-// 菲比信息数据
-const charactersData = [
-    { name: "菲比", role: "教士", color: "#FF8C42", avatar: "images/菲比猪鼻.jpg" }
-];
-
 let currentCategory = 'all';
 let currentSort = 'newest';
 let searchQuery = '';
 let nextId = 5;
 let isAdmin = false;
+let dataLoaded = false;
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
     createParticles();
     renderCharacters();
-    renderMemes();
-    updateHotList();
     initUploadModal();
     initAdminPanel();
+    loadData();
 });
+
+// 从 Firebase 加载数据
+async function loadData() {
+    if (firebaseEnabled) {
+        try {
+            // 读取已发布的表情包
+            const memesSnapshot = await db.collection('memes').orderBy('createdAt', 'desc').get();
+            memesData = memesSnapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    firebaseId: doc.id,
+                    title: data.title,
+                    url: data.url,
+                    category: data.category || ['cute'],
+                    views: data.views || 0,
+                    downloads: data.downloads || 0,
+                    date: data.date || new Date().toISOString().split('T')[0],
+                    isGif: data.isGif || false,
+                    hot: data.hot || 50,
+                    createdAt: data.createdAt ? data.createdAt.toDate() : new Date()
+                };
+            });
+
+            // 读取待审核数据
+            const pendingSnapshot = await db.collection('pending').orderBy('createdAt', 'desc').get();
+            pendingData = pendingSnapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    firebaseId: doc.id,
+                    title: data.title,
+                    url: data.url,
+                    category: data.category || ['cute'],
+                    views: 0,
+                    downloads: 0,
+                    date: data.date || new Date().toISOString().split('T')[0],
+                    isGif: data.isGif || false,
+                    hot: 50,
+                    createdAt: data.createdAt ? data.createdAt.toDate() : new Date()
+                };
+            });
+
+            dataLoaded = true;
+            console.log('从 Firebase 加载数据成功');
+        } catch (e) {
+            console.error('从 Firebase 加载数据失败:', e);
+            // 失败时使用本地数据
+            useLocalData();
+        }
+    } else {
+        useLocalData();
+    }
+
+    renderMemes();
+    updateHotList();
+}
+
+// 使用本地备用数据
+function useLocalData() {
+    memesData = [
+        {
+            id: 1,
+            title: "誓死效忠米哈游",
+            url: "images/誓死效忠米哈游.jpg",
+            category: ["meme"],
+            views: 15234,
+            downloads: 3421,
+            date: "2025-06-15",
+            isGif: false,
+            hot: 98
+        },
+        {
+            id: 2,
+            title: "菲比猪鼻",
+            url: "images/菲比猪鼻.jpg",
+            category: ["cute"],
+            views: 28567,
+            downloads: 5623,
+            date: "2025-06-14",
+            isGif: false,
+            hot: 100
+        },
+        {
+            id: 3,
+            title: "你这无礼之徒",
+            url: "images/你这无礼之徒.jpg",
+            category: ["meme"],
+            views: 19876,
+            downloads: 4456,
+            date: "2025-06-13",
+            isGif: false,
+            hot: 95
+        },
+        {
+            id: 4,
+            title: "少爷，该启动鸣潮了哈哈",
+            url: "images/少爷，该启动鸣潮了哈哈.jpg",
+            category: ["cute"],
+            views: 32109,
+            downloads: 6789,
+            date: "2025-06-12",
+            isGif: false,
+            hot: 99
+        }
+    ];
+    dataLoaded = true;
+}
 
 // 创建粒子背景
 function createParticles() {
     const container = document.getElementById('particles');
+    if (!container) return;
     for (let i = 0; i < 20; i++) {
         const particle = document.createElement('div');
         particle.className = 'particle';
@@ -89,22 +164,21 @@ function createParticles() {
 function renderCharacters() {
     const grid = document.getElementById('characterGrid');
     if (!grid) return;
-    grid.innerHTML = charactersData.map(char => `
-        <div class="character-item" onclick="filterByCharacter('${char.name}')">
-            <img src="${char.avatar}" alt="${char.name}" class="character-avatar" style="border-color: ${char.color}" onerror="this.src='https://via.placeholder.com/100x100/FF8C42/FFFFFF?text=菲比'">
-            <div class="character-name">${char.name}</div>
-            <div class="character-role">${char.role}</div>
+    grid.innerHTML = `
+        <div class="character-item" onclick="filterByCharacter('菲比')">
+            <img src="images/菲比猪鼻.jpg" alt="菲比" class="character-avatar" style="border-color: #FF8C42" onerror="this.src='https://via.placeholder.com/100x100/FF8C42/FFFFFF?text=菲比'">
+            <div class="character-name">菲比</div>
+            <div class="character-role">教士</div>
         </div>
-    `).join('');
+    `;
 }
 
 // 渲染表情包
 function renderMemes() {
     const grid = document.getElementById('memeGrid');
-    let filtered = [...memesData];
+    if (!grid) return;
 
-    // 过滤掉神秘图片（除非已解锁）
-    filtered = filtered.filter(m => !m.secret || isAdmin);
+    let filtered = [...memesData];
 
     // 分类筛选
     if (currentCategory !== 'all') {
@@ -113,20 +187,20 @@ function renderMemes() {
         } else if (currentCategory === 'gif') {
             filtered = filtered.filter(m => m.isGif);
         } else {
-            filtered = filtered.filter(m => m.category.includes(currentCategory));
+            filtered = filtered.filter(m => m.category && m.category.includes(currentCategory));
         }
     }
 
     // 搜索筛选
     if (searchQuery) {
-        filtered = filtered.filter(m => m.title.includes(searchQuery));
+        filtered = filtered.filter(m => m.title && m.title.includes(searchQuery));
     }
 
     // 排序
     if (currentSort === 'newest') {
-        filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+        filtered.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
     } else if (currentSort === 'hottest') {
-        filtered.sort((a, b) => b.hot - a.hot);
+        filtered.sort((a, b) => (b.hot || 0) - (a.hot || 0));
     } else if (currentSort === 'random') {
         filtered.sort(() => Math.random() - 0.5);
     }
@@ -148,30 +222,30 @@ function renderMemes() {
     }
 
     grid.innerHTML = filtered.map(meme => `
-        <div class="meme-card" data-id="${meme.id}">
+        <div class="meme-card" data-id="${meme.id || meme.firebaseId}">
             <img src="${meme.url}" alt="${meme.title}" class="meme-image" loading="lazy" 
-                onerror="this.src='https://via.placeholder.com/300x300/FF8C42/FFFFFF?text=${encodeURIComponent(meme.title)}'"
-                onclick="handleImageClick(${meme.id}, '${meme.title}')">
+                onerror="this.src='https://via.placeholder.com/300x300/FF8C42/FFFFFF?text=${encodeURIComponent(meme.title || '菲比')}'"
+                onclick="openLightbox('${meme.url}')">
             <div class="meme-info">
-                <div class="meme-title">${meme.title}</div>
+                <div class="meme-title">${meme.title || '未命名'}</div>
                 <div class="meme-meta">
                     <div class="meme-stats">
                         <span class="meme-stat">
                             <span class="stat-label">热度</span>
-                            <span class="stat-value">${meme.hot}</span>
+                            <span class="stat-value">${meme.hot || 0}</span>
                         </span>
                         <span class="meme-stat">
                             <span class="stat-label">下载</span>
-                            <span class="stat-value">${formatNumber(meme.downloads)}</span>
+                            <span class="stat-value">${formatNumber(meme.downloads || 0)}</span>
                         </span>
                     </div>
-                    <span>${meme.date}</span>
+                    <span>${meme.date || ''}</span>
                 </div>
                 <div class="meme-actions">
                     <div class="meme-type ${meme.isGif ? 'gif' : 'static'}">
                         ${meme.isGif ? '动态图片' : '静态图片'}
                     </div>
-                    <button class="download-btn" onclick="event.stopPropagation(); downloadMeme(${meme.id})" title="下载">
+                    <button class="download-btn" onclick="event.stopPropagation(); downloadMeme('${meme.firebaseId || meme.id}')" title="下载">
                         下载
                     </button>
                 </div>
@@ -180,21 +254,13 @@ function renderMemes() {
     `).join('');
 }
 
-// 处理图片点击
-function handleImageClick(id, title) {
-    const meme = memesData.find(m => m.id === id);
-    if (meme) {
-        openLightbox(meme.url);
-    }
-}
-
 // 更新热门列表
 function updateHotList() {
     const hotList = document.getElementById('hotList');
     if (!hotList) return;
-    
-    const sorted = [...memesData].sort((a, b) => b.hot - a.hot).slice(0, 6);
-    
+
+    const sorted = [...memesData].sort((a, b) => (b.hot || 0) - (a.hot || 0)).slice(0, 6);
+
     if (sorted.length === 0) {
         hotList.innerHTML = `
             <div class="hot-item"><div class="hot-rank top">1</div><span class="hot-text">等待添加...</span></div>
@@ -203,11 +269,11 @@ function updateHotList() {
         `;
         return;
     }
-    
+
     hotList.innerHTML = sorted.map((meme, index) => `
         <div class="hot-item" onclick="searchByTitle('${meme.title}')">
             <div class="hot-rank ${index < 3 ? 'top' : ''}">${index + 1}</div>
-            <span class="hot-text">${meme.title}</span>
+            <span class="hot-text">${meme.title || '未命名'}</span>
         </div>
     `).join('');
 }
@@ -223,20 +289,33 @@ function searchByTitle(title) {
 }
 
 // 下载表情包
-function downloadMeme(id) {
-    const meme = memesData.find(m => m.id === id);
+async function downloadMeme(id) {
+    const meme = memesData.find(m => (m.firebaseId || m.id) == id);
     if (!meme) return;
 
     // 增加下载量
-    meme.downloads++;
-    meme.hot = Math.min(100, meme.hot + 1);
+    meme.downloads = (meme.downloads || 0) + 1;
+    meme.hot = Math.min(100, (meme.hot || 0) + 1);
+
+    // 同步到 Firebase
+    if (firebaseEnabled && meme.firebaseId) {
+        try {
+            await db.collection('memes').doc(meme.firebaseId).update({
+                downloads: meme.downloads,
+                hot: meme.hot
+            });
+        } catch (e) {
+            console.error('更新下载量失败:', e);
+        }
+    }
+
     renderMemes();
     updateHotList();
 
     // 执行下载
     const link = document.createElement('a');
     link.href = meme.url;
-    link.download = `${meme.title}.jpg`;
+    link.download = `${meme.title || '菲比'}.jpg`;
     link.target = '_blank';
     document.body.appendChild(link);
     link.click();
@@ -245,12 +324,8 @@ function downloadMeme(id) {
 
 // 格式化数字
 function formatNumber(num) {
-    if (num >= 10000) {
-        return (num / 10000).toFixed(1) + 'w';
-    }
-    if (num >= 1000) {
-        return (num / 1000).toFixed(1) + 'k';
-    }
+    if (num >= 10000) return (num / 10000).toFixed(1) + 'w';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
     return num.toString();
 }
 
@@ -291,12 +366,11 @@ function switchTab(tab, el) {
         currentCategory = 'all';
         currentSort = 'hottest';
     }
-    
-    // 更新排序按钮状态
+
     document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
     const sortBtn = document.querySelector(`button[onclick="sortMemes('${currentSort}', this)"]`);
     if (sortBtn) sortBtn.classList.add('active');
-    
+
     renderMemes();
 }
 
@@ -331,10 +405,10 @@ function initUploadModal() {
 
     if (fileUpload && fileInput) {
         fileUpload.addEventListener('click', () => fileInput.click());
-        
+
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
-            if (file) {
+            if (file && preview) {
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     preview.src = event.target.result;
@@ -362,8 +436,7 @@ function closeUploadModal() {
         modal.classList.remove('active');
         document.body.style.overflow = '';
     }
-    
-    // 重置表单
+
     const form = document.getElementById('uploadForm');
     const preview = document.getElementById('previewImage');
     if (form) form.reset();
@@ -373,75 +446,111 @@ function closeUploadModal() {
     }
 }
 
-// 处理上传 - 需要审核
-function handleUpload(event) {
+// 处理上传 - 上传到 Firebase 待审核
+async function handleUpload(event) {
     event.preventDefault();
-    
+
+    if (!firebaseEnabled) {
+        alert('Firebase 未配置，无法上传。请先配置 Firebase。');
+        return false;
+    }
+
     const fileInput = document.getElementById('uploadFile');
     const nameInput = document.getElementById('phoebeName');
     const categoryInput = document.getElementById('phoebeCategory');
-    
+
     const file = fileInput.files[0];
     const name = nameInput.value.trim();
     const category = categoryInput.value;
-    
+
     if (!file) {
-        alert('请选择一张菲比图片！');
-        return false;
-    }
-    
-    if (!name) {
-        alert('请给菲比起一个可爱的名字！');
-        return false;
-    }
-    
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        const newMeme = {
-            id: nextId++,
-            title: name,
-            url: e.target.result,
-            category: [category],
-            views: 0,
-            downloads: 0,
-            date: new Date().toISOString().split('T')[0],
-            isGif: file.type === 'image/gif',
-            hot: 50,
-            pending: true
-        };
-        
-        // 添加到待审核列表
-        pendingData.push(newMeme);
-        
-        closeUploadModal();
-        
-        // 显示审核提示
-        showToast(`「${name}」已提交审核，请耐心等待~`);
-        
-        // 如果管理员面板打开，更新显示
-        if (isAdmin) {
-            renderAdminPanel();
+            alert('请选择一张菲比图片！');
+            return false;
         }
-    };
-    reader.readAsDataURL(file);
-    
-    return false;
+
+        if (!name) {
+            alert('请给菲比起一个可爱的名字！');
+            return false;
+        }
+
+        const submitBtn = document.querySelector('.submit-btn');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = '上传中...';
+        }
+
+        try {
+            // 1. 将图片转为 Base64
+            const base64Image = await fileToBase64(file);
+
+            // 2. 压缩图片（如果太大）
+            const compressedImage = await compressImage(base64Image, file.type, 1024, 0.85);
+
+            // 3. 保存到 Firestore pending 集合
+            await db.collection('pending').add({
+                title: name,
+                url: compressedImage,
+                category: [category],
+                isGif: file.type === 'image/gif',
+                date: new Date().toISOString().split('T')[0],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                status: 'pending'
+            });
+
+            closeUploadModal();
+            showToast(`「${name}」已提交审核，请耐心等待~`);
+
+            // 如果管理员面板打开，更新显示
+            if (isAdmin) {
+                await refreshPendingList();
+            }
+        } catch (e) {
+            console.error('上传失败:', e);
+            alert('上传失败: ' + e.message);
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '发布菲比';
+            }
+        }
+
+        return false;
+}
+
+// 刷新待审核列表
+async function refreshPendingList() {
+    if (!firebaseEnabled) return;
+    try {
+        const snapshot = await db.collection('pending').orderBy('createdAt', 'desc').get();
+        pendingData = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                firebaseId: doc.id,
+                title: data.title,
+                url: data.url,
+                category: data.category || ['cute'],
+                isGif: data.isGif || false,
+                date: data.date || new Date().toISOString().split('T')[0],
+                createdAt: data.createdAt ? data.createdAt.toDate() : new Date()
+            };
+        });
+        renderAdminPanel();
+    } catch (e) {
+        console.error('刷新待审核列表失败:', e);
+    }
 }
 
 // 管理员面板
 function initAdminPanel() {
-    // 隐藏原来的管理员按钮
     const adminToggle = document.getElementById('adminToggle');
-    if (adminToggle) {
-        adminToggle.style.display = 'none';
-    }
-    
-    // 绑定右侧菲比头像点击事件（连续点击3次触发）
+    if (adminToggle) adminToggle.style.display = 'none';
+
     const phoebeAvatar = document.getElementById('phoebeAvatar');
     if (phoebeAvatar) {
         let clickCount = 0;
         let clickTimer = null;
-        
+
         phoebeAvatar.addEventListener('click', () => {
             clickCount++;
             if (clickCount === 1) {
@@ -462,19 +571,17 @@ function toggleAdmin() {
     if (!isAdmin) {
         const input = prompt('请输入验证信息：');
         if (!input) return;
-        
-        // 密码通过多段编码拼接，不直接出现在代码中
-        // 分段: pb + qb + xwd + 5201314
+
         const p1 = String.fromCharCode(112, 98);
         const p2 = String.fromCharCode(113, 98);
         const p3 = String.fromCharCode(120, 119, 100);
         const p4 = String.fromCharCode(53, 50, 48, 49, 51, 49, 52);
         const key = p1 + p2 + p3 + p4;
-        
+
         if (input === key) {
             isAdmin = true;
             showToast('管理员登录成功！');
-            renderAdminPanel();
+            refreshPendingList().then(() => renderAdminPanel());
         } else {
             showToast('验证失败！');
         }
@@ -489,54 +596,132 @@ function toggleAdmin() {
 function renderAdminPanel() {
     const panel = document.getElementById('adminPanel');
     if (!panel) return;
-    
+
     panel.classList.add('active');
-    
+
     if (pendingData.length === 0) {
         panel.innerHTML = `
             <h3>审核面板</h3>
             <p style="text-align: center; color: #999; padding: 20px;">暂无待审核内容</p>
+            <button class="review-btn approve" onclick="loadData()" style="width: 100%; margin-top: 10px;">刷新数据</button>
         `;
         return;
     }
-    
+
     panel.innerHTML = `
         <h3>审核面板 (${pendingData.length} 条待审核)</h3>
         ${pendingData.map((item, index) => `
             <div class="review-item">
                 <img src="${item.url}" alt="${item.title}">
                 <div class="review-item-info">
-                    <div class="review-item-title">${item.title}</div>
-                    <div class="review-item-date">${item.date} | ${item.isGif ? '动态' : '静态'}</div>
+                    <div class="review-item-title">${item.title || '未命名'}</div>
+                    <div class="review-item-date">${item.date || ''} | ${item.isGif ? '动态' : '静态'}</div>
                 </div>
                 <div class="review-actions">
-                    <button class="review-btn approve" onclick="approveMeme(${index})">通过</button>
-                    <button class="review-btn reject" onclick="rejectMeme(${index})">拒绝</button>
+                    <button class="review-btn approve" onclick="approveMeme('${item.firebaseId}', ${index})">通过</button>
+                    <button class="review-btn reject" onclick="rejectMeme('${item.firebaseId}', ${index})">拒绝</button>
                 </div>
             </div>
         `).join('')}
+        <button class="review-btn approve" onclick="loadData()" style="width: 100%; margin-top: 15px;">刷新全部数据</button>
     `;
 }
 
 // 审核通过
-function approveMeme(index) {
+async function approveMeme(firebaseId, index) {
+    if (!firebaseEnabled) return;
+
     const meme = pendingData[index];
-    meme.pending = false;
-    memesData.unshift(meme);
-    pendingData.splice(index, 1);
-    
-    renderMemes();
-    updateHotList();
-    renderAdminPanel();
-    showToast(`「${meme.title}」审核通过！`);
+    if (!meme) return;
+
+    try {
+        // 1. 添加到 memes 集合
+        const newMemeData = {
+            title: meme.title,
+            url: meme.url,
+            category: meme.category,
+            isGif: meme.isGif,
+            date: meme.date,
+            views: 0,
+            downloads: 0,
+            hot: 50,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        await db.collection('memes').add(newMemeData);
+
+        // 2. 从 pending 删除
+        await db.collection('pending').doc(firebaseId).delete();
+
+        // 3. 更新本地数据
+        pendingData.splice(index, 1);
+        showToast(`「${meme.title}」审核通过！`);
+
+        // 4. 重新加载数据
+        await loadData();
+        renderAdminPanel();
+    } catch (e) {
+        console.error('审核通过失败:', e);
+        alert('审核失败: ' + e.message);
+    }
 }
 
 // 审核拒绝
-function rejectMeme(index) {
+async function rejectMeme(firebaseId, index) {
+    if (!firebaseEnabled) return;
+
     const meme = pendingData[index];
-    pendingData.splice(index, 1);
-    renderAdminPanel();
-    showToast(`「${meme.title}」已拒绝`);
+    if (!meme) return;
+
+    try {
+        // 从 pending 删除
+        await db.collection('pending').doc(firebaseId).delete();
+
+        pendingData.splice(index, 1);
+        renderAdminPanel();
+        showToast(`「${meme.title}」已拒绝`);
+    } catch (e) {
+        console.error('审核拒绝失败:', e);
+        alert('拒绝失败: ' + e.message);
+    }
+}
+
+// 文件转 Base64
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+// 压缩图片
+function compressImage(base64, type, maxWidth, quality) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+            let width = img.width;
+            let height = img.height;
+
+            if (width > maxWidth) {
+                height = Math.round(height * maxWidth / width);
+                width = maxWidth;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+
+            const compressed = canvas.toDataURL(type, quality);
+            resolve(compressed);
+        };
+        img.src = base64;
+    });
 }
 
 // Toast提示
@@ -560,7 +745,7 @@ function showToast(message) {
     `;
     toast.textContent = message;
     document.body.appendChild(toast);
-    
+
     setTimeout(() => {
         toast.style.opacity = '0';
         toast.style.transition = 'opacity 0.3s';
