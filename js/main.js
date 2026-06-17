@@ -103,9 +103,18 @@ function renderMemes() {
     const grid = document.getElementById('memeGrid');
     let filtered = [...memesData];
 
+    // 过滤掉神秘图片（除非已解锁）
+    filtered = filtered.filter(m => !m.secret || isAdmin);
+
     // 分类筛选
     if (currentCategory !== 'all') {
-        filtered = filtered.filter(m => m.category.includes(currentCategory));
+        if (currentCategory === 'static') {
+            filtered = filtered.filter(m => !m.isGif);
+        } else if (currentCategory === 'gif') {
+            filtered = filtered.filter(m => m.isGif);
+        } else {
+            filtered = filtered.filter(m => m.category.includes(currentCategory));
+        }
     }
 
     // 搜索筛选
@@ -142,12 +151,9 @@ function renderMemes() {
         <div class="meme-card" data-id="${meme.id}">
             <img src="${meme.url}" alt="${meme.title}" class="meme-image" loading="lazy" 
                 onerror="this.src='https://via.placeholder.com/300x300/FF8C42/FFFFFF?text=${encodeURIComponent(meme.title)}'"
-                onclick="openLightbox('${meme.url}')">
+                onclick="handleImageClick(${meme.id}, '${meme.title}')">
             <div class="meme-info">
                 <div class="meme-title">${meme.title}</div>
-                <div class="meme-type ${meme.isGif ? 'gif' : 'static'}">
-                    ${meme.isGif ? '动态图片' : '静态图片'}
-                </div>
                 <div class="meme-meta">
                     <div class="meme-stats">
                         <span class="meme-stat">
@@ -161,12 +167,25 @@ function renderMemes() {
                     </div>
                     <span>${meme.date}</span>
                 </div>
-                <button class="download-btn" onclick="event.stopPropagation(); downloadMeme(${meme.id})" title="下载">
-                    <span>下载</span>
-                </button>
+                <div class="meme-actions">
+                    <div class="meme-type ${meme.isGif ? 'gif' : 'static'}">
+                        ${meme.isGif ? '动态图片' : '静态图片'}
+                    </div>
+                    <button class="download-btn" onclick="event.stopPropagation(); downloadMeme(${meme.id})" title="下载">
+                        下载
+                    </button>
+                </div>
             </div>
         </div>
     `).join('');
+}
+
+// 处理图片点击
+function handleImageClick(id, title) {
+    const meme = memesData.find(m => m.id === id);
+    if (meme) {
+        openLightbox(meme.url);
+    }
 }
 
 // 更新热门列表
@@ -411,22 +430,53 @@ function handleUpload(event) {
 
 // 管理员面板
 function initAdminPanel() {
+    // 隐藏原来的管理员按钮
     const adminToggle = document.getElementById('adminToggle');
     if (adminToggle) {
-        adminToggle.addEventListener('click', toggleAdmin);
+        adminToggle.style.display = 'none';
+    }
+    
+    // 绑定右侧菲比头像点击事件（连续点击3次触发）
+    const phoebeAvatar = document.getElementById('phoebeAvatar');
+    if (phoebeAvatar) {
+        let clickCount = 0;
+        let clickTimer = null;
+        
+        phoebeAvatar.addEventListener('click', () => {
+            clickCount++;
+            if (clickCount === 1) {
+                clickTimer = setTimeout(() => {
+                    clickCount = 0;
+                }, 2000);
+            }
+            if (clickCount >= 3) {
+                clearTimeout(clickTimer);
+                clickCount = 0;
+                toggleAdmin();
+            }
+        });
     }
 }
 
 function toggleAdmin() {
     if (!isAdmin) {
-        const password = prompt('请输入管理员密码：');
-        if (password === 'phoebehub') {
+        const input = prompt('请输入验证信息：');
+        if (!input) return;
+        
+        // 密码通过多段编码拼接，不直接出现在代码中
+        // 分段: pb + qb + xwd + 5201314
+        const p1 = String.fromCharCode(112, 98);
+        const p2 = String.fromCharCode(113, 98);
+        const p3 = String.fromCharCode(120, 119, 100);
+        const p4 = String.fromCharCode(53, 50, 48, 49, 51, 49, 52);
+        const key = p1 + p2 + p3 + p4;
+        
+        if (input === key) {
             isAdmin = true;
             showToast('管理员登录成功！');
             renderAdminPanel();
         } else {
-            showToast('密码错误！');
-            return;
+            showToast('验证失败！');
         }
     } else {
         isAdmin = false;

@@ -475,14 +475,16 @@ body {
 
 .meme-image {
     width: 100%;
-    height: 240px;
-    object-fit: cover;
+    height: auto;
+    max-height: 400px;
+    object-fit: contain;
     display: block;
     transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    background: linear-gradient(135deg, #f8f8f8 0%, #f0f0f0 100%);
 }
 
 .meme-card:hover .meme-image {
-    transform: scale(1.08);
+    transform: scale(1.03);
 }
 
 .meme-info {
@@ -503,16 +505,25 @@ body {
     letter-spacing: -0.3px;
 }
 
+/* 底部操作栏 */
+.meme-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 12px;
+}
+
 /* 图片类型标签 */
 .meme-type {
-    display: inline-block;
-    padding: 5px 14px;
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
     border-radius: 20px;
     font-size: 12px;
     font-weight: 800;
-    margin-bottom: 12px;
-    text-align: center;
-    width: 100%;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .meme-type.static {
@@ -533,7 +544,7 @@ body {
     align-items: center;
     font-size: 13px;
     color: var(--text-light);
-    margin-bottom: 14px;
+    margin-bottom: 12px;
     padding: 10px 0;
     border-top: 1px solid #f0f0f0;
     border-bottom: 1px solid #f0f0f0;
@@ -564,33 +575,33 @@ body {
 
 /* 下载按钮 */
 .download-btn {
-    width: 100%;
-    padding: 12px;
+    padding: 8px 20px;
     background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
     color: var(--white);
     border: none;
-    border-radius: 14px;
-    font-size: 15px;
+    border-radius: 20px;
+    font-size: 13px;
     font-weight: 800;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
     font-family: inherit;
     letter-spacing: 0.5px;
     box-shadow: 0 4px 15px rgba(255, 122, 61, 0.25);
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .download-btn:hover {
-    transform: scale(1.03) translateY(-2px);
+    transform: scale(1.05);
     box-shadow: 0 8px 25px rgba(255, 122, 61, 0.4);
     background: linear-gradient(135deg, var(--primary-dark) 0%, var(--accent) 100%);
 }
 
 .download-btn:active {
-    transform: scale(0.98);
+    transform: scale(0.95);
 }
 
 /* 右侧边栏 */
@@ -1204,29 +1215,14 @@ body {
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
-/* 管理员登录按钮 */
-.admin-toggle {
+/* 隐藏的管理员触发区域 */
+.admin-trigger {
     position: fixed;
-    bottom: 120px;
-    right: 35px;
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    cursor: pointer;
-    z-index: 998;
-    font-size: 18px;
-    font-weight: 800;
-    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
-    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.admin-toggle:hover {
-    transform: scale(1.15);
-    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.5);
+    bottom: 0;
+    right: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: -1;
 }

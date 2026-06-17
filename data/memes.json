@@ -1,0 +1,50 @@
+{
+  "memes": [
+    {
+      "id": 1,
+      "title": "誓死效忠米哈游",
+      "url": "images/誓死效忠米哈游.jpg",
+      "category": ["meme"],
+      "views": 15234,
+      "downloads": 3421,
+      "date": "2025-06-15",
+      "isGif": false,
+      "hot": 98
+    },
+    {
+      "id": 2,
+      "title": "菲比猪鼻",
+      "url": "images/菲比猪鼻.jpg",
+      "category": ["cute"],
+      "views": 28567,
+      "downloads": 5623,
+      "date": "2025-06-14",
+      "isGif": false,
+      "hot": 100
+    },
+    {
+      "id": 3,
+      "title": "你这无礼之徒",
+      "url": "images/你这无礼之徒.jpg",
+      "category": ["meme"],
+      "views": 19876,
+      "downloads": 4456,
+      "date": "2025-06-13",
+      "isGif": false,
+      "hot": 95
+    },
+    {
+      "id": 4,
+      "title": "少爷，该启动鸣潮了哈哈",
+      "url": "images/少爷，该启动鸣潮了哈哈.jpg",
+      "category": ["cute"],
+      "views": 32109,
+      "downloads": 6789,
+      "date": "2025-06-12",
+      "isGif": false,
+      "hot": 99
+    }
+  ],
+  "pending": [],
+  "nextId": 5
+}
