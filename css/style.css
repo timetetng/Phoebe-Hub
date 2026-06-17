@@ -604,6 +604,44 @@ body {
     transform: scale(0.95);
 }
 
+/* 管理员操作按钮 */
+.admin-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed #f0f0f0;
+}
+
+.admin-btn {
+    flex: 1;
+    padding: 6px 0;
+    border: none;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-family: inherit;
+}
+
+.admin-btn.edit {
+    background: linear-gradient(135deg, #42A5F5 0%, #1E88E5 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(30, 136, 229, 0.2);
+}
+
+.admin-btn.delete {
+    background: linear-gradient(135deg, #EF5350 0%, #E53935 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(229, 57, 53, 0.2);
+}
+
+.admin-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
 /* 右侧边栏 */
 .sidebar-right {
     width: 280px;

@@ -69,11 +69,11 @@ async function loadData() {
                     title: data.title,
                     url: data.url,
                     category: data.category || ['cute'],
-                    views: 0,
-                    downloads: 0,
+                    views: data.views || 0,
+                    downloads: data.downloads || 0,
                     date: data.date || new Date().toISOString().split('T')[0],
                     isGif: data.isGif || false,
-                    hot: 50,
+                    hot: data.hot || 0,
                     createdAt: data.createdAt ? data.createdAt.toDate() : new Date()
                 };
             });
@@ -249,6 +249,12 @@ function renderMemes() {
                         下载
                     </button>
                 </div>
+                ${isAdmin ? `
+                <div class="admin-actions">
+                    <button class="admin-btn edit" onclick="event.stopPropagation(); editMemeName('${meme.firebaseId || meme.id}')">改名</button>
+                    <button class="admin-btn delete" onclick="event.stopPropagation(); deleteMeme('${meme.firebaseId || meme.id}')">删除</button>
+                </div>
+                ` : ''}
             </div>
         </div>
     `).join('');
@@ -644,7 +650,7 @@ async function approveMeme(firebaseId, index) {
             date: meme.date,
             views: 0,
             downloads: 0,
-            hot: 50,
+            hot: 0,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         };
 
@@ -684,6 +690,64 @@ async function rejectMeme(firebaseId, index) {
         console.error('审核拒绝失败:', e);
         alert('拒绝失败: ' + e.message);
     }
+}
+
+// 删除已发布的表情包
+async function deleteMeme(id) {
+    if (!isAdmin) return;
+
+    const meme = memesData.find(m => (m.firebaseId || m.id) == id);
+    if (!meme) return;
+
+    if (!confirm(`确定要删除「${meme.title || '未命名'}」吗？`)) return;
+
+    if (firebaseEnabled && meme.firebaseId) {
+        try {
+            await db.collection('memes').doc(meme.firebaseId).delete();
+            showToast(`「${meme.title || '未命名'}」已删除`);
+        } catch (e) {
+            console.error('删除失败:', e);
+            alert('删除失败: ' + e.message);
+            return;
+        }
+    }
+
+    // 从本地数据中移除
+    memesData = memesData.filter(m => (m.firebaseId || m.id) != id);
+    renderMemes();
+    updateHotList();
+    renderAdminPanel();
+}
+
+// 修改已发布表情包的名称
+async function editMemeName(id) {
+    if (!isAdmin) return;
+
+    const meme = memesData.find(m => (m.firebaseId || m.id) == id);
+    if (!meme) return;
+
+    const newName = prompt('请输入新的名字：', meme.title || '');
+    if (!newName || newName.trim() === '') return;
+    if (newName.trim() === meme.title) return;
+
+    const finalName = newName.trim();
+
+    if (firebaseEnabled && meme.firebaseId) {
+        try {
+            await db.collection('memes').doc(meme.firebaseId).update({
+                title: finalName
+            });
+            showToast('修改成功！');
+        } catch (e) {
+            console.error('改名失败:', e);
+            alert('改名失败: ' + e.message);
+            return;
+        }
+    }
+
+    meme.title = finalName;
+    renderMemes();
+    updateHotList();
 }
 
 // 文件转 Base64
