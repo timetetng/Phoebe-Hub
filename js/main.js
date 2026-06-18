@@ -62,11 +62,11 @@ function initAuthListener() {
     });
 }
 
-// 从 Firebase 加载数据
+// 从 Firebase 加载公开数据
 async function loadData() {
     if (firebaseEnabled) {
         try {
-            // 读取已发布的表情包
+            // 读取已发布的表情包（所有人可读）
             const memesSnapshot = await db.collection('memes').orderBy('createdAt', 'desc').get();
             memesData = memesSnapshot.docs.map(doc => {
                 const data = doc.data();
@@ -86,31 +86,10 @@ async function loadData() {
                 };
             });
 
-            // 读取待审核数据
-            const pendingSnapshot = await db.collection('pending').orderBy('createdAt', 'desc').get();
-            pendingData = pendingSnapshot.docs.map(doc => {
-                const data = doc.data();
-                return {
-                    id: doc.id,
-                    firebaseId: doc.id,
-                    title: data.title,
-                    url: data.url,
-                    category: data.category || ['cute'],
-                    views: data.views || 0,
-                    downloads: data.downloads || 0,
-                    date: data.date || new Date().toISOString().split('T')[0],
-                    isGif: data.isGif || false,
-                    hot: data.hot || 0,
-                    tags: data.tags || [],
-                    createdAt: data.createdAt ? data.createdAt.toDate() : new Date()
-                };
-            });
-
             dataLoaded = true;
-            console.log('从 Firebase 加载数据成功');
+            console.log('从 Firebase 加载表情包成功');
         } catch (e) {
-            console.error('从 Firebase 加载数据失败:', e);
-            // 失败时使用本地数据
+            console.error('从 Firebase 加载表情包失败:', e);
             useLocalData();
         }
     } else {
@@ -119,6 +98,36 @@ async function loadData() {
 
     renderMemes();
     updateHotList();
+}
+
+// 加载待审核数据（仅管理员）
+async function loadPendingData() {
+    if (!firebaseEnabled || !isAdmin) return;
+
+    try {
+        const pendingSnapshot = await db.collection('pending').orderBy('createdAt', 'desc').get();
+        pendingData = pendingSnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                firebaseId: doc.id,
+                title: data.title,
+                url: data.url,
+                category: data.category || ['cute'],
+                views: data.views || 0,
+                downloads: data.downloads || 0,
+                date: data.date || new Date().toISOString().split('T')[0],
+                isGif: data.isGif || false,
+                hot: data.hot || 0,
+                tags: data.tags || [],
+                createdAt: data.createdAt ? data.createdAt.toDate() : new Date()
+            };
+        });
+
+        console.log('从 Firebase 加载待审核数据成功');
+    } catch (e) {
+        console.error('从 Firebase 加载待审核数据失败:', e);
+    }
 }
 
 // 使用本地备用数据
@@ -612,26 +621,8 @@ async function handleUpload(event) {
 
 // 刷新待审核列表
 async function refreshPendingList() {
-    if (!firebaseEnabled) return;
-    try {
-        const snapshot = await db.collection('pending').orderBy('createdAt', 'desc').get();
-        pendingData = snapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                firebaseId: doc.id,
-                title: data.title,
-                url: data.url,
-                category: data.category || ['cute'],
-                isGif: data.isGif || false,
-                date: data.date || new Date().toISOString().split('T')[0],
-                createdAt: data.createdAt ? data.createdAt.toDate() : new Date()
-            };
-        });
-        renderAdminPanel();
-    } catch (e) {
-        console.error('刷新待审核列表失败:', e);
-    }
+    await loadPendingData();
+    renderAdminPanel();
 }
 
 // 管理员面板
