@@ -1,5 +1,6 @@
 // 初始化 Firebase
 let db = null;
+let auth = null;
 let firebaseApp = null;
 let firebaseEnabled = false;
 
@@ -7,6 +8,7 @@ try {
     if (typeof firebase !== 'undefined' && firebaseConfig && firebaseConfig.projectId !== 'YOUR_PROJECT_ID') {
         firebaseApp = firebase.initializeApp(firebaseConfig);
         db = firebase.firestore();
+        auth = firebase.auth();
         firebaseEnabled = true;
         console.log('Firebase 已连接');
     } else {
@@ -26,6 +28,7 @@ let searchQuery = '';
 let nextId = 5;
 let isAdmin = false;
 let dataLoaded = false;
+let currentUser = null;
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
@@ -33,8 +36,31 @@ document.addEventListener('DOMContentLoaded', () => {
     renderCharacters();
     initUploadModal();
     initAdminPanel();
+    initAuthListener();
     loadData();
 });
+
+// 监听 Firebase 登录状态
+function initAuthListener() {
+    if (!auth) return;
+
+    auth.onAuthStateChanged(user => {
+        currentUser = user;
+        isAdmin = !!user;
+
+        if (user) {
+            console.log('管理员已登录:', user.email);
+            closeLoginModal();
+            refreshPendingList().then(() => renderAdminPanel());
+        } else {
+            console.log('未登录管理员');
+            const panel = document.getElementById('adminPanel');
+            if (panel) panel.classList.remove('active');
+        }
+
+        renderMemes();
+    });
+}
 
 // 从 Firebase 加载数据
 async function loadData() {
@@ -636,28 +662,76 @@ function initAdminPanel() {
 
 function toggleAdmin() {
     if (!isAdmin) {
-        const input = prompt('请输入验证信息：');
-        if (!input) return;
-
-        const p1 = String.fromCharCode(112, 98);
-        const p2 = String.fromCharCode(113, 98);
-        const p3 = String.fromCharCode(120, 119, 100);
-        const p4 = String.fromCharCode(53, 50, 48, 49, 51, 49, 52);
-        const key = p1 + p2 + p3 + p4;
-
-        if (input === key) {
-            isAdmin = true;
-            showToast('管理员登录成功！');
-            refreshPendingList().then(() => renderAdminPanel());
-        } else {
-            showToast('验证失败！');
-        }
+        openLoginModal();
     } else {
-        isAdmin = false;
-        const panel = document.getElementById('adminPanel');
-        if (panel) panel.classList.remove('active');
-        showToast('已退出管理员模式');
+        auth.signOut().then(() => {
+            isAdmin = false;
+            currentUser = null;
+            const panel = document.getElementById('adminPanel');
+            if (panel) panel.classList.remove('active');
+            showToast('已退出管理员模式');
+            renderMemes();
+        }).catch(e => {
+            console.error('退出失败:', e);
+            showToast('退出失败');
+        });
     }
+}
+
+function openLoginModal() {
+    const modal = document.getElementById('loginModal');
+    const errorDiv = document.getElementById('loginError');
+    if (modal) {
+        modal.classList.add('show');
+        document.body.style.overflow = 'hidden';
+    }
+    if (errorDiv) errorDiv.textContent = '';
+}
+
+function closeLoginModal() {
+    const modal = document.getElementById('loginModal');
+    if (modal) {
+        modal.classList.remove('show');
+        document.body.style.overflow = '';
+    }
+    const form = document.getElementById('loginForm');
+    if (form) form.reset();
+    const errorDiv = document.getElementById('loginError');
+    if (errorDiv) errorDiv.textContent = '';
+}
+
+async function handleLogin(event) {
+    event.preventDefault();
+    if (!auth) {
+        showToast('Firebase 认证未初始化');
+        return false;
+    }
+
+    const emailInput = document.getElementById('adminEmail');
+    const passwordInput = document.getElementById('adminPassword');
+    const errorDiv = document.getElementById('loginError');
+
+    const email = emailInput ? emailInput.value.trim() : '';
+    const password = passwordInput ? passwordInput.value : '';
+
+    try {
+        errorDiv.textContent = '';
+        await auth.signInWithEmailAndPassword(email, password);
+        showToast('管理员登录成功！');
+    } catch (e) {
+        console.error('登录失败:', e);
+        let msg = '登录失败';
+        if (e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password') {
+            msg = '邮箱或密码错误';
+        } else if (e.code === 'auth/invalid-email') {
+            msg = '邮箱格式不正确';
+        } else if (e.message) {
+            msg = e.message;
+        }
+        if (errorDiv) errorDiv.textContent = msg;
+    }
+
+    return false;
 }
 
 function renderAdminPanel() {
@@ -696,7 +770,7 @@ function renderAdminPanel() {
 
 // 审核通过
 async function approveMeme(firebaseId, index) {
-    if (!firebaseEnabled) return;
+    if (!firebaseEnabled || !isAdmin) return;
 
     const meme = pendingData[index];
     if (!meme) return;
@@ -736,7 +810,7 @@ async function approveMeme(firebaseId, index) {
 
 // 审核拒绝
 async function rejectMeme(firebaseId, index) {
-    if (!firebaseEnabled) return;
+    if (!firebaseEnabled || !isAdmin) return;
 
     const meme = pendingData[index];
     if (!meme) return;
@@ -953,6 +1027,7 @@ document.addEventListener('keydown', (e) => {
         closeLightbox();
         closeUploadModal();
         closeNoticeModal();
+        closeLoginModal();
     }
 });
 

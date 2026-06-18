@@ -9,6 +9,7 @@
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="js/firebase-config.js"></script>
     <script src="js/cloudinary-config.js"></script>
     <style>
@@ -302,6 +303,28 @@
                     </select>
                 </div>
                 <button type="submit" class="submit-btn">发布菲比</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 管理员登录弹窗 -->
+    <div class="modal-overlay" id="loginModal" onclick="if(event.target === this) closeLoginModal()">
+        <div class="modal-content login-content">
+            <button class="modal-close" onclick="closeLoginModal()">&times;</button>
+            <div class="modal-header">
+                <h2>管理员登录</h2>
+            </div>
+            <form id="loginForm" onsubmit="return handleLogin(event)">
+                <div class="form-group">
+                    <label for="adminEmail">邮箱</label>
+                    <input type="email" id="adminEmail" placeholder="管理员邮箱" required autocomplete="email" />
+                </div>
+                <div class="form-group">
+                    <label for="adminPassword">密码</label>
+                    <input type="password" id="adminPassword" placeholder="管理员密码" required autocomplete="current-password" />
+                </div>
+                <div id="loginError" class="login-error"></div>
+                <button type="submit" class="submit-btn">登录</button>
             </form>
         </div>
     </div>
