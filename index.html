@@ -13,7 +13,7 @@
     <script src="js/firebase-config.js"></script>
     <script src="js/cloudinary-config.js"></script>
     <style>
-        /* ===== 修改：上传区域 - 预览图覆盖摄像头位置 ===== */
+        /* ===== 上传区域 - 预览图覆盖摄像头位置 ===== */
         .file-upload {
             position: relative;
             width: 100%;
@@ -30,11 +30,11 @@
             box-sizing: border-box;
         }
         .file-upload:hover {
-            border-color: #FF8C42;
+            border-color: var(--primary-light);
             background: #f0f0f0;
         }
         .file-upload.dragover {
-            border-color: #FF8C42;
+            border-color: var(--primary-light);
             background: #fff0e0;
         }
         /* 占位内容（摄像头+文字） */
@@ -132,6 +132,25 @@
                 font-size: 12px;
             }
         }
+
+        /* 批量上传区域 */
+        .batch-upload-area {
+            border: 2px dashed var(--primary-light);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: var(--secondary);
+        }
+        .batch-upload-area:hover {
+            border-color: var(--primary);
+            background: #EDE9FE;
+        }
+        .batch-upload-area input[type="file"] {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -143,7 +162,7 @@
     <nav class="navbar">
         <div class="nav-container">
             <a href="#" class="logo">
-                <span class="logo-icon">✨</span>
+                <img src="images/top.png" alt="Phoebe" class="logo-icon" />
                 <span>Phoebe Hub</span>
             </a>
             <ul class="nav-menu">
@@ -210,7 +229,7 @@
             <div class="wuthering-section">
                 <h3 class="section-title">✨ 关于菲比</h3>
                 <div class="phoebe-info" style="text-align: center; padding: 10px 0;">
-                    <img src="images/菲比猪鼻.jpg" alt="菲比" id="phoebeAvatar" style="cursor: pointer;" title="点击我试试？" onerror="this.src='https://via.placeholder.com/150x150/FF8C42/FFFFFF?text=菲比'" />
+                    <img src="images/top.png" alt="菲比" id="phoebeAvatar" style="cursor: pointer;" title="点击我试试？" onerror="this.src='https://via.placeholder.com/150x150/7B6BC6/FFFFFF?text=菲比'" />
                     <div style="font-size: 20px; font-weight: 800; color: var(--text-dark); margin-bottom: 5px;">菲比</div>
                     <div style="font-size: 14px; color: var(--primary); font-weight: 700; margin-bottom: 10px;">教士 / 共鸣者</div>
                     <p style="font-size: 13px; color: var(--text-light); line-height: 1.6; text-align: left; font-weight: 600;">
@@ -336,7 +355,34 @@
         <p style="text-align: center; color: #999; padding: 20px;">暂无待审核内容</p>
     </div>
 
-
+    <!-- 批量上传模态框（管理员专用） -->
+    <div class="modal-overlay" id="batchUploadModal" onclick="if(event.target === this) closeBatchUploadModal()">
+        <div class="modal-content" style="max-width: 600px;">
+            <button class="modal-close" onclick="closeBatchUploadModal()">&times;</button>
+            <div class="modal-header">
+                <h2>批量上传菲比</h2>
+                <p style="font-size: 13px; color: #999;">文件名将作为图片标题</p>
+            </div>
+            <div class="batch-upload-area" id="batchUploadArea">
+                <input type="file" id="batchUploadFile" accept="image/*" multiple />
+                <div class="file-upload-icon">📁</div>
+                <div class="file-upload-text">
+                    点击或拖拽批量上传图片<br />
+                    <span>支持多选，文件名自动作为标题</span>
+                </div>
+            </div>
+            <div class="batch-upload-list" id="batchUploadList"></div>
+            <div class="form-group">
+                <label for="batchCategory">分类</label>
+                <select id="batchCategory">
+                    <option value="cute">超可爱</option>
+                    <option value="static">静态图</option>
+                    <option value="gif">动态图</option>
+                </select>
+            </div>
+            <button type="button" class="submit-btn" onclick="handleBatchUpload()">批量发布</button>
+        </div>
+    </div>
 
     <!-- 页脚 -->
     <footer class="footer">
@@ -366,7 +412,7 @@
 
     <!-- 菲比装饰 -->
     <div class="phoebe-decoration" onclick="scrollToTop()" title="回到顶部">
-        <img src="images/菲比猪鼻.jpg" alt="菲比" onerror="this.src='https://via.placeholder.com/200x200/FF8C42/FFFFFF?text=菲比'" />
+        <img src="images/top.png" alt="菲比" onerror="this.src='https://via.placeholder.com/200x200/7B6BC6/FFFFFF?text=菲比'" />
     </div>
 
     <script src="js/main.js"></script>

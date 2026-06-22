@@ -29,7 +29,10 @@ let nextId = 5;
 let isAdmin = false;
 let dataLoaded = false;
 let currentUser = null;
-let currentFilteredMemes = [];
+
+// 批量上传相关
+let batchFiles = [];
+let selectedPendingIds = new Set();
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
@@ -38,7 +41,9 @@ document.addEventListener('DOMContentLoaded', () => {
     initUploadModal();
     initAdminPanel();
     initAuthListener();
+    initLazyLoad();
     loadData();
+    initBatchUpload();
 });
 
 // 监听 Firebase 登录状态
@@ -204,11 +209,49 @@ function renderCharacters() {
     if (!grid) return;
     grid.innerHTML = `
         <div class="character-item" onclick="filterByCharacter('菲比')">
-            <img src="images/菲比猪鼻.jpg" alt="菲比" class="character-avatar" style="border-color: #FF8C42" onerror="this.src='https://via.placeholder.com/100x100/FF8C42/FFFFFF?text=菲比'">
+            <img src="images/top.png" alt="菲比" class="character-avatar" style="border-color: #7B6BC6" onerror="this.src='https://via.placeholder.com/100x100/7B6BC6/FFFFFF?text=菲比'">
             <div class="character-name">菲比</div>
             <div class="character-role">教士</div>
         </div>
     `;
+}
+
+// 图片懒加载
+function initLazyLoad() {
+    const imageObserver = new IntersectionObserver((entries, observer) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const img = entry.target;
+                const src = img.getAttribute('data-src');
+                if (src) {
+                    img.src = src;
+                    img.removeAttribute('data-src');
+                    img.classList.add('loaded');
+                }
+                observer.unobserve(img);
+            }
+        });
+    }, {
+        rootMargin: '50px 0px',
+        threshold: 0.01
+    });
+
+    window.observeImage = function(img) {
+        if (img && img.hasAttribute('data-src')) {
+            imageObserver.observe(img);
+        }
+    };
+}
+
+// 获取图片的压缩预览 URL（使用 Cloudinary 优化）
+function getOptimizedUrl(url, width = 400) {
+    if (!url) return url;
+    // 如果是 Cloudinary 图片，添加优化参数
+    if (url.includes('cloudinary.com')) {
+        // 在 URL 中插入优化参数
+        return url.replace('/upload/', `/upload/w_${width},q_auto,f_webp,c_limit/`);
+    }
+    return url;
 }
 
 // 渲染表情包
@@ -251,8 +294,6 @@ function renderMemes() {
         filtered.sort(() => Math.random() - 0.5);
     }
 
-    currentFilteredMemes = filtered;
-
     // 更新计数
     const resultCount = document.getElementById('resultCount');
     if (resultCount) resultCount.textContent = filtered.length;
@@ -269,11 +310,15 @@ function renderMemes() {
         return;
     }
 
-    grid.innerHTML = filtered.map(meme => `
+    grid.innerHTML = filtered.map(meme => {
+        const optimizedUrl = getOptimizedUrl(meme.url, 400);
+        const fullUrl = meme.url;
+        return `
         <div class="meme-card" data-id="${meme.id || meme.firebaseId}">
-            <img src="${meme.url}" alt="${meme.title}" class="meme-image ${meme.isGif ? 'gif-image' : ''}" loading="lazy" 
-                onerror="this.src='https://via.placeholder.com/300x300/FF8C42/FFFFFF?text=${encodeURIComponent(meme.title || '菲比')}'"
-                onclick="openLightbox('${meme.url}')">
+            <img data-src="${optimizedUrl}" data-full="${fullUrl}" alt="${meme.title}" class="meme-image ${meme.isGif ? 'gif-image' : ''} lazy" loading="lazy" 
+                onerror="this.src='https://via.placeholder.com/300x300/7B6BC6/FFFFFF?text=${encodeURIComponent(meme.title || '菲比')}'"
+                onclick="openLightbox('${fullUrl}')"
+                onload="this.classList.add('loaded')">
             <div class="meme-info">
                 <div class="meme-title">${meme.title || '未命名'}</div>
                 ${renderMemeTags(meme)}
@@ -301,7 +346,12 @@ function renderMemes() {
                 ${isAdmin ? renderAdminActions(meme) : ''}
             </div>
         </div>
-    `).join('');
+    `}).join('');
+
+    // 初始化懒加载观察
+    document.querySelectorAll('.meme-image.lazy').forEach(img => {
+        if (window.observeImage) window.observeImage(img);
+    });
 }
 
 // 渲染表情包的标签
@@ -379,7 +429,7 @@ function searchByTitle(title) {
     }
 }
 
-// 下载表情包
+// 下载表情包 - 使用 fetch + blob 实现真正的下载
 async function downloadMeme(id) {
     const meme = memesData.find(m => (m.firebaseId || m.id) == id);
     if (!meme) return;
@@ -403,108 +453,36 @@ async function downloadMeme(id) {
     renderMemes();
     updateHotList();
 
-    // 执行下载
-    const extension = meme.isGif ? 'gif' : 'jpg';
-    const link = document.createElement('a');
-    link.href = meme.url;
-    link.download = `${meme.title || '菲比'}.${extension}`;
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
-
-// 批量下载当前表情包为压缩包
-async function batchDownloadAll() {
-    if (typeof JSZip === 'undefined') {
-        alert('批量下载组件加载失败，请刷新页面重试。');
-        return;
-    }
-
-    const memes = currentFilteredMemes && currentFilteredMemes.length > 0
-        ? currentFilteredMemes
-        : memesData;
-
-    if (memes.length === 0) {
-        showToast('当前没有可下载的菲比~');
-        return;
-    }
-
-    const zip = new JSZip();
-    const usedNames = new Set();
-    let successCount = 0;
-    let failCount = 0;
-
-    showToast(`正在打包 ${memes.length} 张菲比，请稍候...`);
-
-    for (const meme of memes) {
-        if (!meme.url) continue;
-
-        try {
-            const response = await fetch(meme.url, { mode: 'cors' });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const blob = await response.blob();
-
-            const safeTitle = (meme.title || '菲比').replace(/[\\/:*?"<>|]/g, '_').trim() || '菲比';
-            let ext = meme.isGif ? 'gif' : '';
-            if (!ext) {
-                const urlPath = new URL(meme.url, window.location.href).pathname;
-                const matched = urlPath.match(/\.([a-zA-Z0-9]+)$/);
-                if (matched) {
-                    ext = matched[1].toLowerCase();
-                } else if (blob.type) {
-                    const typeMap = {
-                        'image/gif': 'gif',
-                        'image/png': 'png',
-                        'image/webp': 'webp',
-                        'image/jpeg': 'jpg'
-                    };
-                    ext = typeMap[blob.type] || 'jpg';
-                } else {
-                    ext = 'jpg';
-                }
-            }
-
-            let fileName = `${safeTitle}.${ext}`;
-            if (usedNames.has(fileName)) {
-                let i = 2;
-                while (usedNames.has(`${safeTitle}_${i}.${ext}`)) i++;
-                fileName = `${safeTitle}_${i}.${ext}`;
-            }
-            usedNames.add(fileName);
-
-            zip.file(fileName, blob);
-            successCount++;
-        } catch (err) {
-            console.error(`打包失败: ${meme.title || meme.url}`, err);
-            failCount++;
-        }
-    }
-
-    if (successCount === 0) {
-        showToast('打包失败，请检查网络或图片链接。');
-        return;
-    }
-
+    // 执行下载 - 使用 fetch + blob
     try {
-        const content = await zip.generateAsync({ type: 'blob' });
-        const url = URL.createObjectURL(content);
+        showToast('正在下载...');
+        const response = await fetch(meme.url);
+        if (!response.ok) throw new Error('下载失败');
+        
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        
+        const extension = meme.isGif ? 'gif' : 'jpg';
         const link = document.createElement('a');
-        link.href = url;
-        link.download = `菲比表情包_${new Date().toISOString().slice(0, 10)}.zip`;
+        link.href = blobUrl;
+        link.download = `${meme.title || '菲比'}.${extension}`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-
-        if (failCount > 0) {
-            showToast(`已打包 ${successCount} 张，${failCount} 张失败。`);
-        } else {
-            showToast(`成功打包 ${successCount} 张菲比！`);
-        }
-    } catch (err) {
-        console.error('生成压缩包失败:', err);
-        showToast('生成压缩包失败，请重试。');
+        
+        // 清理 blob URL
+        setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
+        
+        showToast('下载成功！');
+    } catch (e) {
+        console.error('下载失败:', e);
+        // 降级方案：直接打开图片
+        const link = document.createElement('a');
+        link.href = meme.url;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 }
 
@@ -644,6 +622,97 @@ function closeUploadModal() {
     }
 }
 
+// 将文件转换为 WebP
+async function convertToWebP(file, quality = 0.85) {
+    // 如果是 GIF，保持原格式
+    if (file.type === 'image/gif') {
+        return file;
+    }
+
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        
+        reader.onload = (e) => {
+            img.src = e.target.result;
+        };
+        
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    // 创建新的 File 对象
+                    const webpFile = new File([blob], file.name.replace(/\.[^.]+$/, '.webp'), {
+                        type: 'image/webp',
+                        lastModified: Date.now()
+                    });
+                    resolve(webpFile);
+                } else {
+                    resolve(file); // 转换失败，返回原文件
+                }
+            }, 'image/webp', quality);
+        };
+        
+        img.onerror = () => resolve(file); // 转换失败，返回原文件
+        reader.readAsDataURL(file);
+    });
+}
+
+// 压缩图片
+async function compressImageFile(file, maxWidth = 1200, quality = 0.85) {
+    // 如果是 GIF，保持原格式
+    if (file.type === 'image/gif') {
+        return file;
+    }
+
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        
+        reader.onload = (e) => {
+            img.src = e.target.result;
+        };
+        
+        img.onload = () => {
+            let width = img.width;
+            let height = img.height;
+            
+            if (width > maxWidth) {
+                height = Math.round(height * maxWidth / width);
+                width = maxWidth;
+            }
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    const compressedFile = new File([blob], file.name, {
+                        type: file.type,
+                        lastModified: Date.now()
+                    });
+                    resolve(compressedFile);
+                } else {
+                    resolve(file);
+                }
+            }, file.type, quality);
+        };
+        
+        img.onerror = () => resolve(file);
+        reader.readAsDataURL(file);
+    });
+}
+
 // 处理上传 - 上传到 Firebase 待审核
 async function handleUpload(event) {
     event.preventDefault();
@@ -662,58 +731,68 @@ async function handleUpload(event) {
     const category = categoryInput.value;
 
     if (!file) {
-            alert('请选择一张菲比图片！');
-            return false;
-        }
-
-        if (!name) {
-            alert('请给菲比起一个可爱的名字！');
-            return false;
-        }
-
-        const submitBtn = document.querySelector('.submit-btn');
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.textContent = '上传中...';
-        }
-
-        try {
-            // 1. 判断是否为 GIF
-            const isGif = file.type === 'image/gif';
-
-            // 2. 上传图片到 Cloudinary
-            showToast('正在上传图片到云端...');
-            const imageUrl = await uploadToCloudinary(file);
-
-            // 3. 保存图片 URL 到 Firestore pending 集合
-            await db.collection('pending').add({
-                title: name,
-                url: imageUrl,
-                category: [category],
-                isGif: isGif,
-                date: new Date().toISOString().split('T')[0],
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                status: 'pending'
-            });
-
-            closeUploadModal();
-            showToast(`「${name}」已提交审核，请耐心等待~`);
-
-            // 如果管理员面板打开，更新显示
-            if (isAdmin) {
-                await refreshPendingList();
-            }
-        } catch (e) {
-            console.error('上传失败:', e);
-            alert('上传失败: ' + e.message);
-        } finally {
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = '发布菲比';
-            }
-        }
-
+        alert('请选择一张菲比图片！');
         return false;
+    }
+
+    if (!name) {
+        alert('请给菲比起一个可爱的名字！');
+        return false;
+    }
+
+    const submitBtn = document.querySelector('.submit-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '上传中...';
+    }
+
+    try {
+        // 1. 判断是否为 GIF
+        const isGif = file.type === 'image/gif';
+
+        // 2. 压缩图片
+        showToast('正在压缩图片...');
+        let processedFile = await compressImageFile(file, 1200, 0.85);
+
+        // 3. 转换为 WebP（GIF 除外）
+        if (!isGif) {
+            showToast('正在转换为 WebP...');
+            processedFile = await convertToWebP(processedFile, 0.85);
+        }
+
+        // 4. 上传图片到 Cloudinary
+        showToast('正在上传图片到云端...');
+        const imageUrl = await uploadToCloudinary(processedFile);
+
+        // 5. 保存图片 URL 到 Firestore pending 集合
+        await db.collection('pending').add({
+            title: name,
+            url: imageUrl,
+            category: [category],
+            isGif: isGif,
+            date: new Date().toISOString().split('T')[0],
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            status: 'pending'
+        });
+
+        closeUploadModal();
+        showToast(`「${name}」已提交审核，请耐心等待~`);
+
+        // 如果管理员面板打开，更新显示
+        if (isAdmin) {
+            await refreshPendingList();
+        }
+    } catch (e) {
+        console.error('上传失败:', e);
+        alert('上传失败: ' + e.message);
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = '发布菲比';
+        }
+    }
+
+    return false;
 }
 
 // 刷新待审核列表
@@ -832,6 +911,7 @@ function renderAdminPanel() {
         panel.innerHTML = `
             <h3>审核面板</h3>
             <p style="text-align: center; color: #999; padding: 20px;">暂无待审核内容</p>
+            <button class="review-btn approve" onclick="showBatchUploadModal()" style="width: 100%; margin-top: 10px;">批量上传</button>
             <button class="review-btn approve" onclick="refreshAllData()" style="width: 100%; margin-top: 10px;">刷新数据</button>
         `;
         return;
@@ -839,9 +919,15 @@ function renderAdminPanel() {
 
     panel.innerHTML = `
         <h3>审核面板 (${pendingData.length} 条待审核)</h3>
+        <div class="batch-actions">
+            <button class="review-btn approve" onclick="selectAllPending()">全选</button>
+            <button class="review-btn approve" onclick="batchApprove()">一键同意</button>
+            <button class="review-btn reject" onclick="batchReject()">一键拒绝</button>
+        </div>
         ${pendingData.map((item, index) => `
             <div class="review-item">
-                <img src="${item.url}" alt="${item.title}">
+                <input type="checkbox" class="review-checkbox" data-id="${item.firebaseId}" data-index="${index}" onchange="togglePendingSelection('${item.firebaseId}')">
+                <img src="${getOptimizedUrl(item.url, 100)}" alt="${item.title}" loading="lazy">
                 <div class="review-item-info">
                     <div class="review-item-title">${item.title || '未命名'}</div>
                     <div class="review-item-date">${item.date || ''} | ${item.isGif ? '动态' : '静态'}</div>
@@ -852,13 +938,237 @@ function renderAdminPanel() {
                 </div>
             </div>
         `).join('')}
+        <button class="review-btn approve" onclick="showBatchUploadModal()" style="width: 100%; margin-top: 10px;">批量上传</button>
         <button class="review-btn approve" onclick="refreshAllData()" style="width: 100%; margin-top: 15px;">刷新全部数据</button>
     `;
 }
 
+// 批量审核功能
+function selectAllPending() {
+    const checkboxes = document.querySelectorAll('.review-checkbox');
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    
+    checkboxes.forEach(cb => {
+        cb.checked = !allChecked;
+        const id = cb.getAttribute('data-id');
+        if (!allChecked) {
+            selectedPendingIds.add(id);
+        } else {
+            selectedPendingIds.delete(id);
+        }
+    });
+}
+
+function togglePendingSelection(id) {
+    if (selectedPendingIds.has(id)) {
+        selectedPendingIds.delete(id);
+    } else {
+        selectedPendingIds.add(id);
+    }
+}
+
+async function batchApprove() {
+    if (!firebaseEnabled || !isAdmin) return;
+    if (selectedPendingIds.size === 0) {
+        showToast('请先选择要审核的项目');
+        return;
+    }
+
+    if (!confirm(`确定要批量通过 ${selectedPendingIds.size} 条内容吗？`)) return;
+
+    showToast(`正在批量通过 ${selectedPendingIds.size} 条内容...`);
+    let successCount = 0;
+
+    for (const id of selectedPendingIds) {
+        const meme = pendingData.find(p => p.firebaseId === id);
+        if (!meme) continue;
+
+        try {
+            const newMemeData = {
+                title: meme.title,
+                url: meme.url,
+                category: meme.category || ['cute'],
+                isGif: meme.isGif || false,
+                date: meme.date,
+                views: 0,
+                downloads: 0,
+                hot: 0,
+                tags: [],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            await db.collection('memes').add(newMemeData);
+            await db.collection('pending').doc(id).delete();
+            successCount++;
+        } catch (e) {
+            console.error(`审核通过失败 (${id}):`, e);
+        }
+    }
+
+    selectedPendingIds.clear();
+    showToast(`成功通过 ${successCount} 条内容！`);
+    await loadData();
+    renderAdminPanel();
+}
+
+async function batchReject() {
+    if (!firebaseEnabled || !isAdmin) return;
+    if (selectedPendingIds.size === 0) {
+        showToast('请先选择要拒绝的项目');
+        return;
+    }
+
+    if (!confirm(`确定要批量拒绝 ${selectedPendingIds.size} 条内容吗？`)) return;
+
+    showToast(`正在批量拒绝 ${selectedPendingIds.size} 条内容...`);
+    let successCount = 0;
+
+    for (const id of selectedPendingIds) {
+        try {
+            await db.collection('pending').doc(id).delete();
+            successCount++;
+        } catch (e) {
+            console.error(`审核拒绝失败 (${id}):`, e);
+        }
+    }
+
+    selectedPendingIds.clear();
+    showToast(`成功拒绝 ${successCount} 条内容`);
+    renderAdminPanel();
+}
+
+// 批量上传功能
+function initBatchUpload() {
+    const batchUploadArea = document.getElementById('batchUploadArea');
+    const batchUploadFile = document.getElementById('batchUploadFile');
+
+    if (batchUploadArea && batchUploadFile) {
+        batchUploadArea.addEventListener('click', () => batchUploadFile.click());
+
+        batchUploadFile.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            handleBatchFiles(files);
+        });
+    }
+}
+
+function showBatchUploadModal() {
+    if (!isAdmin) {
+        showToast('请先登录管理员账号');
+        return;
+    }
+    const modal = document.getElementById('batchUploadModal');
+    if (modal) {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+function closeBatchUploadModal() {
+    const modal = document.getElementById('batchUploadModal');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+    batchFiles = [];
+    const list = document.getElementById('batchUploadList');
+    if (list) list.innerHTML = '';
+}
+
+function handleBatchFiles(files) {
+    batchFiles = files.filter(file => file.type.startsWith('image/'));
+    const list = document.getElementById('batchUploadList');
+    if (!list) return;
+
+    list.innerHTML = batchFiles.map((file, index) => {
+        const fileName = file.name.replace(/\.[^.]+$/, '');
+        const objectUrl = URL.createObjectURL(file);
+        return `
+            <div class="batch-upload-item">
+                <img src="${objectUrl}" alt="${fileName}">
+                <input type="text" value="${fileName}" data-index="${index}" placeholder="图片名称">
+            </div>
+        `;
+    }).join('');
+}
+
+async function handleBatchUpload() {
+    if (!firebaseEnabled) {
+        alert('Firebase 未配置，无法上传。');
+        return;
+    }
+
+    if (batchFiles.length === 0) {
+        alert('请选择图片文件！');
+        return;
+    }
+
+    const category = document.getElementById('batchCategory').value;
+    const nameInputs = document.querySelectorAll('#batchUploadList input');
+    
+    const submitBtn = document.querySelector('#batchUploadModal .submit-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '上传中...';
+    }
+
+    let successCount = 0;
+
+    for (let i = 0; i < batchFiles.length; i++) {
+        const file = batchFiles[i];
+        const nameInput = nameInputs[i];
+        const name = nameInput ? nameInput.value.trim() : file.name.replace(/\.[^.]+$/, '');
+        
+        if (!name) continue;
+
+        try {
+            const isGif = file.type === 'image/gif';
+            
+            // 压缩
+            let processedFile = await compressImageFile(file, 1200, 0.85);
+            
+            // 转换为 WebP（GIF 除外）
+            if (!isGif) {
+                processedFile = await convertToWebP(processedFile, 0.85);
+            }
+
+            // 上传
+            const imageUrl = await uploadToCloudinary(processedFile);
+
+            // 保存到 pending
+            await db.collection('pending').add({
+                title: name,
+                url: imageUrl,
+                category: [category],
+                isGif: isGif,
+                date: new Date().toISOString().split('T')[0],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                status: 'pending'
+            });
+
+            successCount++;
+        } catch (e) {
+            console.error(`批量上传失败 (${file.name}):`, e);
+        }
+    }
+
+    closeBatchUploadModal();
+    showToast(`成功上传 ${successCount}/${batchFiles.length} 个文件，等待审核~`);
+
+    if (isAdmin) {
+        await refreshPendingList();
+    }
+
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '批量发布';
+    }
+}
+
 // 刷新公开数据和待审核数据
-function refreshAllData() {
-    location.reload();
+async function refreshAllData() {
+    await loadData();
+    await refreshPendingList();
 }
 
 // 审核通过
@@ -1052,34 +1362,6 @@ async function uploadToCloudinary(file) {
     return data.secure_url;
 }
 
-// 压缩图片
-function compressImage(base64, type, maxWidth, quality) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-            let width = img.width;
-            let height = img.height;
-
-            if (width > maxWidth) {
-                height = Math.round(height * maxWidth / width);
-                width = maxWidth;
-            }
-
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, width, height);
-            ctx.drawImage(img, 0, 0, width, height);
-
-            const compressed = canvas.toDataURL(type, quality);
-            resolve(compressed);
-        };
-        img.src = base64;
-    });
-}
-
 // Toast提示
 function showToast(message) {
     const toast = document.createElement('div');
@@ -1094,7 +1376,7 @@ function showToast(message) {
         border-radius: 30px;
         font-weight: 800;
         z-index: 5000;
-        box-shadow: 0 6px 25px rgba(255, 122, 61, 0.4);
+        box-shadow: 0 6px 25px rgba(123, 107, 198, 0.4);
         animation: slideDown 0.3s ease-out;
         font-size: 15px;
         letter-spacing: 0.5px;
@@ -1121,6 +1403,7 @@ document.addEventListener('keydown', (e) => {
         closeUploadModal();
         closeNoticeModal();
         closeLoginModal();
+        closeBatchUploadModal();
     }
 });
 
@@ -1135,7 +1418,20 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function shouldShowNotice() {
-    // 每次进入站点都显示迁移公告
+    const now = Date.now();
+
+    // 如果点了"我已点星"，24 小时内不显示
+    const starredAt = localStorage.getItem('phoebeNoticeStarredAt');
+    if (starredAt && now - parseInt(starredAt) < 24 * 60 * 60 * 1000) {
+        return false;
+    }
+
+    // 如果点了关闭，10 分钟内不显示
+    const closedAt = localStorage.getItem('phoebeNoticeClosedAt');
+    if (closedAt && now - parseInt(closedAt) < 10 * 60 * 1000) {
+        return false;
+    }
+
     return true;
 }
 
@@ -1153,8 +1449,11 @@ function closeNoticeModal() {
         modal.classList.remove('show');
         document.body.style.overflow = '';
     }
+    localStorage.setItem('phoebeNoticeClosedAt', Date.now().toString());
 }
 
 function markNoticeStarred() {
+    localStorage.setItem('phoebeNoticeStarredAt', Date.now().toString());
     closeNoticeModal();
+    showToast('感谢你的 Star！菲比啾比 ~');
 }
