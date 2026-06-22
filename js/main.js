@@ -209,7 +209,7 @@ function renderCharacters() {
     if (!grid) return;
     grid.innerHTML = `
         <div class="character-item" onclick="filterByCharacter('菲比')">
-            <img src="images/top.png" alt="菲比" class="character-avatar" style="border-color: #7B6BC6" onerror="this.src='https://via.placeholder.com/100x100/7B6BC6/FFFFFF?text=菲比'">
+            <img src="images/top.png" alt="菲比" class="character-avatar" style="border-color: #B794F6" onerror="this.src='https://via.placeholder.com/100x100/B794F6/FFFFFF?text=菲比'">
             <div class="character-name">菲比</div>
             <div class="character-role">教士</div>
         </div>
@@ -1005,10 +1005,10 @@ async function batchApprove() {
         }
     }
 
-    selectedPendingIds.clear();
     showToast(`成功通过 ${successCount} 条内容！`);
     // 从 pendingData 中移除已审核的项目
     pendingData = pendingData.filter(p => !selectedPendingIds.has(p.firebaseId));
+    selectedPendingIds.clear();
     await loadData();
     await refreshPendingList();
 }
@@ -1034,10 +1034,10 @@ async function batchReject() {
         }
     }
 
-    selectedPendingIds.clear();
     showToast(`成功拒绝 ${successCount} 条内容`);
     // 从 pendingData 中移除已拒绝的项目
     pendingData = pendingData.filter(p => !selectedPendingIds.has(p.firebaseId));
+    selectedPendingIds.clear();
     await refreshPendingList();
 }
 
@@ -1380,7 +1380,7 @@ function showToast(message) {
         border-radius: 30px;
         font-weight: 800;
         z-index: 5000;
-        box-shadow: 0 6px 25px rgba(123, 107, 198, 0.4);
+        box-shadow: 0 6px 25px rgba(159, 122, 234, 0.4);
         animation: slideDown 0.3s ease-out;
         font-size: 15px;
         letter-spacing: 0.5px;

@@ -26,16 +26,16 @@
             cursor: pointer;
             overflow: hidden;
             transition: border-color 0.3s ease, background 0.3s ease;
-            background: #f8f9fa;
+            background: rgba(255,255,255,0.7);
             box-sizing: border-box;
         }
         .file-upload:hover {
             border-color: var(--primary-light);
-            background: #f0f0f0;
+            background: rgba(183,148,246,0.08);
         }
         .file-upload.dragover {
             border-color: var(--primary-light);
-            background: #fff0e0;
+            background: rgba(183,148,246,0.12);
         }
         /* 占位内容（摄像头+文字） */
         .file-upload-placeholder {
@@ -75,8 +75,8 @@
             top: 0;
             left: 0;
             border-radius: 12px;
-            background: #f8f9fa;
-            padding: 8px;
+                background: rgba(255,255,255,0.7);
+                padding: 8px;
             box-sizing: border-box;
         }
         .file-upload .preview-image.show {
@@ -142,11 +142,11 @@
             margin-bottom: 15px;
             cursor: pointer;
             transition: all 0.3s;
-            background: var(--secondary);
+            background: rgba(255,255,255,0.7);
         }
         .batch-upload-area:hover {
             border-color: var(--primary);
-            background: #EDE9FE;
+            background: rgba(183,148,246,0.08);
         }
         .batch-upload-area input[type="file"] {
             display: none;
