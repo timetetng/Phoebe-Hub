@@ -33,6 +33,109 @@ let currentUser = null;
 // 批量上传相关
 let batchFiles = [];
 let selectedPendingIds = new Set();
+let selectedMemeIds = new Set();
+
+// 上传安全限制配置
+const UPLOAD_CONFIG = {
+    allowedTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+    maxFileSize: 10 * 1024 * 1024, // 10MB
+    maxBatchCount: 20,
+    cooldownMs: 60 * 1000, // 60秒
+    maxUploadsPerDay: 10,
+    maxTitleLength: 50
+};
+
+const CATEGORY_LABELS = {
+    'cute': '超可爱',
+    'ai': 'AI创作',
+    'static': '静态图',
+    'gif': '动态图'
+};
+
+const TAG_LABELS = {
+    'featured': '精选',
+    'recommended': '站长推荐'
+};
+
+// XSS 转义
+function escapeHtml(text) {
+    if (text == null) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// 验证单个文件
+function validateFile(file) {
+    if (!file) return '请选择图片文件';
+    if (!UPLOAD_CONFIG.allowedTypes.includes(file.type)) {
+        return `不支持的文件类型: ${file.type || '未知'}，仅支持 JPG/PNG/GIF/WebP`;
+    }
+    if (file.size > UPLOAD_CONFIG.maxFileSize) {
+        return `文件过大: ${(file.size / 1024 / 1024).toFixed(2)}MB，最大允许 ${UPLOAD_CONFIG.maxFileSize / 1024 / 1024}MB`;
+    }
+    return null;
+}
+
+// 检查上传频率限制（管理员不受限制）
+function checkUploadLimit(count = 1) {
+    if (isAdmin) return null;
+
+    const now = Date.now();
+    const storageKey = 'phoebeUploadHistory';
+    let history = [];
+    try {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) history = JSON.parse(raw);
+        if (!Array.isArray(history)) history = [];
+    } catch (e) {
+        history = [];
+    }
+
+    // 只保留最近 24 小时的记录
+    const oneDayAgo = now - 24 * 60 * 60 * 1000;
+    history = history.filter(t => t > oneDayAgo);
+
+    // 检查单日上限
+    if (history.length + count > UPLOAD_CONFIG.maxUploadsPerDay) {
+        return `今天已上传 ${history.length} 张，最多还能上传 ${Math.max(0, UPLOAD_CONFIG.maxUploadsPerDay - history.length)} 张`;
+    }
+
+    // 检查冷却时间
+    const lastUpload = history.length > 0 ? history[history.length - 1] : 0;
+    if (now - lastUpload < UPLOAD_CONFIG.cooldownMs) {
+        const waitSeconds = Math.ceil((UPLOAD_CONFIG.cooldownMs - (now - lastUpload)) / 1000);
+        return `上传太频繁，请 ${waitSeconds} 秒后再试`;
+    }
+
+    return null;
+}
+
+// 记录上传尝试
+function recordUploadAttempt(count = 1) {
+    const storageKey = 'phoebeUploadHistory';
+    let history = [];
+    try {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) history = JSON.parse(raw);
+        if (!Array.isArray(history)) history = [];
+    } catch (e) {
+        history = [];
+    }
+    const now = Date.now();
+    history = history.filter(t => t > now - 24 * 60 * 60 * 1000);
+    for (let i = 0; i < count; i++) {
+        history.push(now);
+    }
+    try {
+        localStorage.setItem(storageKey, JSON.stringify(history));
+    } catch (e) {
+        // localStorage 不可用则忽略
+    }
+}
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
@@ -313,14 +416,15 @@ function renderMemes() {
     grid.innerHTML = filtered.map(meme => {
         const optimizedUrl = getOptimizedUrl(meme.url, 400);
         const fullUrl = meme.url;
+        const safeTitle = escapeHtml(meme.title || '未命名');
         return `
-        <div class="meme-card" data-id="${meme.id || meme.firebaseId}">
-            <img data-src="${optimizedUrl}" data-full="${fullUrl}" alt="${meme.title}" class="meme-image ${meme.isGif ? 'gif-image' : ''} lazy" loading="lazy" 
-                onerror="this.src='https://via.placeholder.com/300x300/7B6BC6/FFFFFF?text=${encodeURIComponent(meme.title || '菲比')}'"
+        <div class="meme-card" data-id="${meme.firebaseId || meme.id}">
+            <img data-src="${optimizedUrl}" data-full="${fullUrl}" alt="${safeTitle}" class="meme-image ${meme.isGif ? 'gif-image' : ''} lazy" loading="lazy"
+                onerror="this.src='https://via.placeholder.com/300x300/B794F6/FFFFFF?text=${encodeURIComponent(meme.title || '菲比')}'"
                 onclick="openLightbox('${fullUrl}')"
                 onload="this.classList.add('loaded')">
             <div class="meme-info">
-                <div class="meme-title">${meme.title || '未命名'}</div>
+                <div class="meme-title">${safeTitle}</div>
                 ${renderMemeTags(meme)}
                 <div class="meme-meta">
                     <div class="meme-stats">
@@ -357,19 +461,19 @@ function renderMemes() {
 // 渲染表情包的标签
 function renderMemeTags(meme) {
     const tags = meme.tags || [];
-    const uniqueTags = [...new Set(tags)].filter(tag => tag && tag !== 'static' && tag !== 'gif');
+    const category = meme.category || [];
+    const isAi = category.includes('ai');
+    const isCute = category.includes('cute');
 
-    if (uniqueTags.length === 0) return '';
-
-    const tagNames = {
-        'featured': '精选',
-        'recommended': '站长推荐'
-    };
+    const displayTags = [...new Set(tags)].filter(tag => tag && tag !== 'static' && tag !== 'gif' && tag !== 'ai' && tag !== 'cute');
+    if (displayTags.length === 0 && !isAi && !isCute) return '';
 
     return `
         <div class="meme-tags">
-            ${uniqueTags.map(tag => `
-                <span class="meme-tag ${tag}">${tagNames[tag] || tag}</span>
+            ${isCute ? `<span class="meme-tag cute">超可爱</span>` : ''}
+            ${isAi ? `<span class="meme-tag ai">AI创作</span>` : ''}
+            ${displayTags.map(tag => `
+                <span class="meme-tag ${escapeHtml(tag)}">${escapeHtml(TAG_LABELS[tag] || tag)}</span>
             `).join('')}
         </div>
     `;
@@ -378,8 +482,10 @@ function renderMemeTags(meme) {
 // 渲染管理员操作按钮
 function renderAdminActions(meme) {
     const tags = meme.tags || [];
+    const category = meme.category || [];
     const isFeatured = tags.includes('featured');
     const isRecommended = tags.includes('recommended');
+    const isAi = category.includes('ai');
 
     return `
         <div class="admin-actions">
@@ -389,6 +495,9 @@ function renderAdminActions(meme) {
             </button>
             <button class="admin-btn tag-purple" onclick="event.stopPropagation(); toggleTag('${meme.firebaseId || meme.id}', 'recommended')">
                 ${isRecommended ? '移除推荐' : '站长推荐'}
+            </button>
+            <button class="admin-btn tag-ai" onclick="event.stopPropagation(); toggleAiCategory('${meme.firebaseId || meme.id}')">
+                ${isAi ? '移除AI创作' : 'AI创作'}
             </button>
             <button class="admin-btn delete" onclick="event.stopPropagation(); deleteMeme('${meme.firebaseId || meme.id}')">删除</button>
         </div>
@@ -411,12 +520,16 @@ function updateHotList() {
         return;
     }
 
-    hotList.innerHTML = sorted.map((meme, index) => `
-        <div class="hot-item" onclick="searchByTitle('${meme.title}')">
+    hotList.innerHTML = sorted.map((meme, index) => {
+        const safeTitle = escapeHtml(meme.title || '未命名');
+        const jsTitle = (meme.title || '未命名').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `
+        <div class="hot-item" onclick="searchByTitle('${jsTitle}')">
             <div class="hot-rank ${index < 3 ? 'top' : ''}">${index + 1}</div>
-            <span class="hot-text">${meme.title || '未命名'}</span>
+            <span class="hot-text">${safeTitle}</span>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 // 搜索标题
@@ -724,19 +837,38 @@ async function handleUpload(event) {
 
     const fileInput = document.getElementById('uploadFile');
     const nameInput = document.getElementById('phoebeName');
-    const categoryInput = document.getElementById('phoebeCategory');
 
     const file = fileInput.files[0];
     const name = nameInput.value.trim();
-    const category = categoryInput.value;
+
+    // 读取用户选择的多选分类
+    const checkedCategories = Array.from(document.querySelectorAll('input[name="phoebeCategory"]:checked')).map(cb => cb.value);
 
     if (!file) {
         alert('请选择一张菲比图片！');
         return false;
     }
 
+    // 安全校验
+    const fileError = validateFile(file);
+    if (fileError) {
+        alert(fileError);
+        return false;
+    }
+
+    const limitError = checkUploadLimit(1);
+    if (limitError) {
+        alert(limitError);
+        return false;
+    }
+
     if (!name) {
         alert('请给菲比起一个可爱的名字！');
+        return false;
+    }
+
+    if (name.length > UPLOAD_CONFIG.maxTitleLength) {
+        alert(`名字太长了，最多 ${UPLOAD_CONFIG.maxTitleLength} 个字`);
         return false;
     }
 
@@ -750,30 +882,37 @@ async function handleUpload(event) {
         // 1. 判断是否为 GIF
         const isGif = file.type === 'image/gif';
 
-        // 2. 压缩图片
+        // 2. 根据文件类型自动加上 static/gif
+        const autoType = isGif ? 'gif' : 'static';
+        const category = [...new Set([autoType, ...checkedCategories])];
+
+        // 3. 压缩图片
         showToast('正在压缩图片...');
         let processedFile = await compressImageFile(file, 1200, 0.85);
 
-        // 3. 转换为 WebP（GIF 除外）
+        // 4. 转换为 WebP（GIF 除外）
         if (!isGif) {
             showToast('正在转换为 WebP...');
             processedFile = await convertToWebP(processedFile, 0.85);
         }
 
-        // 4. 上传图片到 Cloudinary
+        // 5. 上传图片到 Cloudinary
         showToast('正在上传图片到云端...');
         const imageUrl = await uploadToCloudinary(processedFile);
 
-        // 5. 保存图片 URL 到 Firestore pending 集合
+        // 6. 保存图片 URL 到 Firestore pending 集合
         await db.collection('pending').add({
             title: name,
             url: imageUrl,
-            category: [category],
+            category: category,
             isGif: isGif,
             date: new Date().toISOString().split('T')[0],
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             status: 'pending'
         });
+
+        // 记录上传成功
+        recordUploadAttempt(1);
 
         closeUploadModal();
         showToast(`「${name}」已提交审核，请耐心等待~`);
@@ -912,6 +1051,7 @@ function renderAdminPanel() {
             <h3>审核面板</h3>
             <p style="text-align: center; color: #999; padding: 20px;">暂无待审核内容</p>
             <button class="review-btn approve" onclick="showBatchUploadModal()" style="width: 100%; margin-top: 10px;">批量上传</button>
+            <button class="review-btn approve" onclick="showBulkManageModal()" style="width: 100%; margin-top: 10px;">已发布管理</button>
             <button class="review-btn approve" onclick="refreshAllData()" style="width: 100%; margin-top: 10px;">刷新数据</button>
         `;
         return;
@@ -924,23 +1064,88 @@ function renderAdminPanel() {
             <button class="review-btn approve" onclick="batchApprove()">一键同意</button>
             <button class="review-btn reject" onclick="batchReject()">一键拒绝</button>
         </div>
-        ${pendingData.map((item, index) => `
+        ${pendingData.map((item, index) => {
+            const currentCats = Array.isArray(item.category) ? item.category : ['cute'];
+            const isChecked = (value) => currentCats.includes(value) ? 'checked' : '';
+            return `
             <div class="review-item">
                 <input type="checkbox" class="review-checkbox" data-id="${item.firebaseId}" data-index="${index}" onchange="togglePendingSelection('${item.firebaseId}')">
-                <img src="${getOptimizedUrl(item.url, 100)}" alt="${item.title}" loading="lazy">
+                <img src="${getOptimizedUrl(item.url, 100)}" alt="${escapeHtml(item.title)}" loading="lazy">
                 <div class="review-item-info">
-                    <div class="review-item-title">${item.title || '未命名'}</div>
+                    <div class="review-item-title">${escapeHtml(item.title) || '未命名'}</div>
                     <div class="review-item-date">${item.date || ''} | ${item.isGif ? '动态' : '静态'}</div>
+                    <div class="review-category-checkboxes" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">
+                        <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer;"><input type="checkbox" onchange="updatePendingCategory(${index}, 'cute', this.checked)" ${isChecked('cute')}><span>超可爱</span></label>
+                        <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer;"><input type="checkbox" onchange="updatePendingCategory(${index}, 'ai', this.checked)" ${isChecked('ai')}><span>AI创作</span></label>
+                        <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer;"><input type="checkbox" onchange="updatePendingCategory(${index}, 'static', this.checked)" ${isChecked('static')}><span>静态图</span></label>
+                        <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer;"><input type="checkbox" onchange="updatePendingCategory(${index}, 'gif', this.checked)" ${isChecked('gif')}><span>动态图</span></label>
+                    </div>
                 </div>
                 <div class="review-actions">
                     <button class="review-btn approve" onclick="approveMeme('${item.firebaseId}', ${index})">通过</button>
                     <button class="review-btn reject" onclick="rejectMeme('${item.firebaseId}', ${index})">拒绝</button>
                 </div>
             </div>
-        `).join('')}
+            `;
+        }).join('')}
         <button class="review-btn approve" onclick="showBatchUploadModal()" style="width: 100%; margin-top: 10px;">批量上传</button>
+        <button class="review-btn approve" onclick="showBulkManageModal()" style="width: 100%; margin-top: 10px;">已发布管理</button>
         <button class="review-btn approve" onclick="refreshAllData()" style="width: 100%; margin-top: 15px;">刷新全部数据</button>
     `;
+}
+
+// 修改待审核项分类（支持多选）
+function updatePendingCategory(index, categoryValue, checked) {
+    const item = pendingData[index];
+    if (!item) return;
+
+    const currentCats = Array.isArray(item.category) ? [...item.category] : [];
+    if (checked) {
+        if (!currentCats.includes(categoryValue)) {
+            currentCats.push(categoryValue);
+        }
+    } else {
+        const idx = currentCats.indexOf(categoryValue);
+        if (idx > -1) currentCats.splice(idx, 1);
+    }
+
+    // 至少保留一个分类
+    if (currentCats.length === 0) {
+        const autoType = item.isGif ? 'gif' : 'static';
+        currentCats.push(autoType);
+    }
+
+    item.category = currentCats;
+}
+
+// 切换 AI创作 分类
+async function toggleAiCategory(id) {
+    if (!isAdmin) return;
+
+    const meme = memesData.find(m => (m.firebaseId || m.id) == id);
+    if (!meme) return;
+
+    const category = meme.category || [];
+    const hasAi = category.includes('ai');
+    const newCategory = hasAi
+        ? category.filter(c => c !== 'ai')
+        : [...category, 'ai'];
+
+    if (firebaseEnabled && meme.firebaseId) {
+        try {
+            await db.collection('memes').doc(meme.firebaseId).update({
+                category: newCategory
+            });
+            showToast(hasAi ? '已移除 AI创作 分类' : '已设为 AI创作');
+        } catch (e) {
+            console.error('修改分类失败:', e);
+            alert('修改分类失败: ' + e.message);
+            return;
+        }
+    }
+
+    meme.category = newCategory;
+    renderMemes();
 }
 
 // 批量审核功能
@@ -1077,15 +1282,25 @@ function closeBatchUploadModal() {
     batchFiles = [];
     const list = document.getElementById('batchUploadList');
     if (list) list.innerHTML = '';
+    const checkboxes = document.querySelectorAll('input[name="batchCategory"]');
+    checkboxes.forEach(cb => cb.checked = false);
 }
 
 function handleBatchFiles(files) {
-    batchFiles = files.filter(file => file.type.startsWith('image/'));
+    // 过滤允许的格式并限制数量
+    const validFiles = files.filter(file => UPLOAD_CONFIG.allowedTypes.includes(file.type));
+    if (validFiles.length < files.length) {
+        showToast('已过滤掉不支持的文件格式，仅保留 JPG/PNG/GIF/WebP');
+    }
+    batchFiles = validFiles.slice(0, UPLOAD_CONFIG.maxBatchCount);
+    if (files.length > UPLOAD_CONFIG.maxBatchCount) {
+        showToast(`单次最多上传 ${UPLOAD_CONFIG.maxBatchCount} 张，已自动截取前 ${UPLOAD_CONFIG.maxBatchCount} 张`);
+    }
     const list = document.getElementById('batchUploadList');
     if (!list) return;
 
     list.innerHTML = batchFiles.map((file, index) => {
-        const fileName = file.name.replace(/\.[^.]+$/, '');
+        const fileName = escapeHtml(file.name.replace(/\.[^.]+$/, ''));
         const objectUrl = URL.createObjectURL(file);
         return `
             <div class="batch-upload-item">
@@ -1107,9 +1322,31 @@ async function handleBatchUpload() {
         return;
     }
 
-    const category = document.getElementById('batchCategory').value;
+    // 批量大小限制
+    if (batchFiles.length > UPLOAD_CONFIG.maxBatchCount) {
+        alert(`单次最多上传 ${UPLOAD_CONFIG.maxBatchCount} 张`);
+        return;
+    }
+
+    // 校验每个文件
+    for (const file of batchFiles) {
+        const fileError = validateFile(file);
+        if (fileError) {
+            alert(`[${file.name}] ${fileError}`);
+            return;
+        }
+    }
+
+    const limitError = checkUploadLimit(batchFiles.length);
+    if (limitError) {
+        alert(limitError);
+        return;
+    }
+
+    // 读取用户选择的多选分类
+    const checkedCategories = Array.from(document.querySelectorAll('input[name="batchCategory"]:checked')).map(cb => cb.value);
     const nameInputs = document.querySelectorAll('#batchUploadList input');
-    
+
     const submitBtn = document.querySelector('#batchUploadModal .submit-btn');
     if (submitBtn) {
         submitBtn.disabled = true;
@@ -1121,16 +1358,23 @@ async function handleBatchUpload() {
     for (let i = 0; i < batchFiles.length; i++) {
         const file = batchFiles[i];
         const nameInput = nameInputs[i];
-        const name = nameInput ? nameInput.value.trim() : file.name.replace(/\.[^.]+$/, '');
-        
+        let name = nameInput ? nameInput.value.trim() : file.name.replace(/\.[^.]+$/, '');
+
         if (!name) continue;
+        if (name.length > UPLOAD_CONFIG.maxTitleLength) {
+            name = name.slice(0, UPLOAD_CONFIG.maxTitleLength);
+        }
 
         try {
             const isGif = file.type === 'image/gif';
-            
+
+            // 根据文件类型自动加上 static/gif
+            const autoType = isGif ? 'gif' : 'static';
+            const category = [...new Set([autoType, ...checkedCategories])];
+
             // 压缩
             let processedFile = await compressImageFile(file, 1200, 0.85);
-            
+
             // 转换为 WebP（GIF 除外）
             if (!isGif) {
                 processedFile = await convertToWebP(processedFile, 0.85);
@@ -1143,7 +1387,7 @@ async function handleBatchUpload() {
             await db.collection('pending').add({
                 title: name,
                 url: imageUrl,
-                category: [category],
+                category: category,
                 isGif: isGif,
                 date: new Date().toISOString().split('T')[0],
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -1155,6 +1399,9 @@ async function handleBatchUpload() {
             console.error(`批量上传失败 (${file.name}):`, e);
         }
     }
+
+    // 记录实际成功上传数
+    recordUploadAttempt(successCount);
 
     closeBatchUploadModal();
     showToast(`成功上传 ${successCount}/${batchFiles.length} 个文件，等待审核~`);
@@ -1328,6 +1575,214 @@ async function toggleTag(id, tagName) {
     updateHotList();
 }
 
+// 已发布批量管理
+function showBulkManageModal() {
+    if (!isAdmin) {
+        showToast('请先登录管理员账号');
+        return;
+    }
+    selectedMemeIds.clear();
+    const modal = document.getElementById('bulkManageModal');
+    if (modal) {
+        modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+    renderBulkManageList();
+}
+
+function closeBulkManageModal() {
+    const modal = document.getElementById('bulkManageModal');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+    selectedMemeIds.clear();
+    renderMemes();
+}
+
+function renderBulkManageList() {
+    const list = document.getElementById('bulkManageList');
+    if (!list) return;
+
+    if (memesData.length === 0) {
+        list.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">暂无已发布内容</p>';
+        return;
+    }
+
+    list.innerHTML = memesData.map(meme => {
+        const memeId = meme.firebaseId || meme.id;
+        const isSelected = selectedMemeIds.has(memeId);
+        const tags = meme.tags || [];
+        const tagText = [];
+        if (tags.includes('featured')) tagText.push('精选');
+        if (tags.includes('recommended')) tagText.push('推荐');
+        return `
+            <div class="bulk-manage-item ${isSelected ? 'selected' : ''}" data-id="${memeId}" onclick="toggleMemeSelection('${memeId}')">
+                <input type="checkbox" class="manage-checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleMemeSelection('${memeId}')">
+                <img src="${getOptimizedUrl(meme.url, 200)}" alt="${escapeHtml(meme.title || '未命名')}" loading="lazy">
+                <div class="manage-title">${escapeHtml(meme.title || '未命名')}${tagText.length ? ' <span style="color:var(--primary);">(' + tagText.join(',') + ')</span>' : ''}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+function toggleMemeSelection(id) {
+    if (!isAdmin) return;
+    if (selectedMemeIds.has(id)) {
+        selectedMemeIds.delete(id);
+    } else {
+        selectedMemeIds.add(id);
+    }
+    renderMemes();
+    const list = document.getElementById('bulkManageList');
+    if (list && document.getElementById('bulkManageModal').classList.contains('active')) {
+        renderBulkManageList();
+    }
+}
+
+function selectAllMemes() {
+    if (!isAdmin) return;
+    if (selectedMemeIds.size === memesData.length) {
+        selectedMemeIds.clear();
+    } else {
+        memesData.forEach(meme => selectedMemeIds.add(meme.firebaseId || meme.id));
+    }
+    renderMemes();
+    renderBulkManageList();
+}
+
+async function batchManageTag(tagName, add) {
+    if (!isAdmin) return;
+    if (selectedMemeIds.size === 0) {
+        showToast('请先选择要操作的图片');
+        return;
+    }
+
+    showToast(`正在批量${add ? '添加' : '移除'}标签...`);
+    let successCount = 0;
+
+    for (const id of selectedMemeIds) {
+        const meme = memesData.find(m => (m.firebaseId || m.id) == id);
+        if (!meme) continue;
+
+        const tags = [...(meme.tags || [])];
+        const hasTag = tags.includes(tagName);
+        let newTags = tags;
+
+        if (add && !hasTag) {
+            newTags = [...tags, tagName];
+        } else if (!add && hasTag) {
+            newTags = tags.filter(t => t !== tagName);
+        }
+
+        if (JSON.stringify(tags) === JSON.stringify(newTags)) {
+            successCount++;
+            continue;
+        }
+
+        if (firebaseEnabled && meme.firebaseId) {
+            try {
+                await db.collection('memes').doc(meme.firebaseId).update({ tags: newTags });
+                successCount++;
+            } catch (e) {
+                console.error(`批量标签失败 (${id}):`, e);
+            }
+        } else {
+            successCount++;
+        }
+        meme.tags = newTags;
+    }
+
+    showToast(`成功处理 ${successCount}/${selectedMemeIds.size} 条`);
+    renderMemes();
+    updateHotList();
+    renderBulkManageList();
+}
+
+async function batchManageCategory(categoryName, add) {
+    if (!isAdmin) return;
+    if (selectedMemeIds.size === 0) {
+        showToast('请先选择要操作的图片');
+        return;
+    }
+
+    const label = CATEGORY_LABELS[categoryName] || categoryName;
+    showToast(`正在批量${add ? '添加' : '移除'}${label}分类...`);
+    let successCount = 0;
+
+    for (const id of selectedMemeIds) {
+        const meme = memesData.find(m => (m.firebaseId || m.id) == id);
+        if (!meme) continue;
+
+        const category = [...(meme.category || [])];
+        const hasCat = category.includes(categoryName);
+        let newCategory = category;
+
+        if (add && !hasCat) {
+            newCategory = [...category, categoryName];
+        } else if (!add && hasCat) {
+            newCategory = category.filter(c => c !== categoryName);
+        }
+
+        if (JSON.stringify(category) === JSON.stringify(newCategory)) {
+            successCount++;
+            continue;
+        }
+
+        if (firebaseEnabled && meme.firebaseId) {
+            try {
+                await db.collection('memes').doc(meme.firebaseId).update({ category: newCategory });
+                successCount++;
+            } catch (e) {
+                console.error(`批量分类失败 (${id}):`, e);
+            }
+        } else {
+            successCount++;
+        }
+        meme.category = newCategory;
+    }
+
+    showToast(`成功处理 ${successCount}/${selectedMemeIds.size} 条`);
+    renderMemes();
+    renderBulkManageList();
+}
+
+async function batchDeleteMemes() {
+    if (!isAdmin) return;
+    if (selectedMemeIds.size === 0) {
+        showToast('请先选择要删除的图片');
+        return;
+    }
+
+    if (!confirm(`确定要批量删除 ${selectedMemeIds.size} 条内容吗？此操作不可恢复！`)) return;
+
+    showToast('正在批量删除...');
+    let successCount = 0;
+
+    for (const id of selectedMemeIds) {
+        const meme = memesData.find(m => (m.firebaseId || m.id) == id);
+        if (!meme) continue;
+
+        if (firebaseEnabled && meme.firebaseId) {
+            try {
+                await db.collection('memes').doc(meme.firebaseId).delete();
+                successCount++;
+            } catch (e) {
+                console.error(`批量删除失败 (${id}):`, e);
+            }
+        } else {
+            successCount++;
+        }
+    }
+
+    memesData = memesData.filter(m => !selectedMemeIds.has(m.firebaseId || m.id));
+    selectedMemeIds.clear();
+    showToast(`成功删除 ${successCount} 条内容`);
+    renderMemes();
+    updateHotList();
+    renderBulkManageList();
+}
+
 // 文件转 Base64
 function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -1408,6 +1863,7 @@ document.addEventListener('keydown', (e) => {
         closeNoticeModal();
         closeLoginModal();
         closeBatchUploadModal();
+        closeBulkManageModal();
     }
 });
 

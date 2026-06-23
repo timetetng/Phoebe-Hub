@@ -151,6 +151,129 @@
         .batch-upload-area input[type="file"] {
             display: none;
         }
+
+        /* 上传分类多选框 */
+        .category-checkboxes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .category-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border: 2px solid rgba(183,148,246,0.2);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: rgba(255,255,255,0.7);
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+        .category-checkbox:hover {
+            border-color: var(--primary);
+            background: rgba(183,148,246,0.08);
+        }
+        .category-checkbox input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--primary);
+            cursor: pointer;
+        }
+        .category-checkbox:has(input:checked) {
+            border-color: var(--primary);
+            background: rgba(183,148,246,0.15);
+            color: var(--primary);
+        }
+
+        /* 审核项分类选择器 */
+        .review-category {
+            margin-top: 6px;
+            padding: 4px 8px;
+            border: 1px solid rgba(183,148,246,0.25);
+            border-radius: 8px;
+            font-size: 12px;
+            background: rgba(255,255,255,0.8);
+            color: var(--text-dark);
+            cursor: pointer;
+            outline: none;
+        }
+        .review-category:focus {
+            border-color: var(--primary);
+        }
+
+        /* 已发布批量管理 */
+        .bulk-manage-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(183,148,246,0.15);
+        }
+        .bulk-manage-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 12px;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding-right: 8px;
+        }
+        .bulk-manage-item {
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+        .bulk-manage-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 18px rgba(159,122,234,0.15);
+        }
+        .bulk-manage-item.selected {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(183,148,246,0.2);
+        }
+        .bulk-manage-item img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            display: block;
+        }
+        .bulk-manage-item .manage-checkbox {
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            z-index: 2;
+        }
+        .bulk-manage-item .manage-title {
+            padding: 6px 8px;
+            font-size: 11px;
+            color: var(--text-dark);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            background: rgba(255,255,255,0.9);
+        }
+        @media (max-width: 600px) {
+            .bulk-manage-list {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            .bulk-manage-actions {
+                gap: 6px;
+            }
+            .bulk-manage-actions .review-btn {
+                padding: 5px 10px;
+                font-size: 12px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -204,6 +327,7 @@
             <div class="category-tabs">
                 <button class="tab-btn active" onclick="filterCategory('all', this)"><span>全部</span></button>
                 <button class="tab-btn" onclick="filterCategory('cute', this)"><span>超可爱</span></button>
+                <button class="tab-btn" onclick="filterCategory('ai', this)"><span>AI创作</span></button>
                 <button class="tab-btn" onclick="filterCategory('static', this)"><span>静态图</span></button>
                 <button class="tab-btn" onclick="filterCategory('gif', this)"><span>动态图</span></button>
             </div>
@@ -315,12 +439,24 @@
                 <!-- ===== 修改结束 ===== -->
 
                 <div class="form-group">
-                    <label for="phoebeCategory">分类</label>
-                    <select id="phoebeCategory">
-                        <option value="cute">超可爱</option>
-                        <option value="static">静态图</option>
-                        <option value="gif">动态图</option>
-                    </select>
+                    <label>分类（可多选）</label>
+                    <div class="category-checkboxes" id="phoebeCategory">
+                        <label class="category-checkbox">
+                            <input type="checkbox" name="phoebeCategory" value="ai">
+                            <span>AI创作</span>
+                        </label>
+                        <label class="category-checkbox">
+                            <input type="checkbox" name="phoebeCategory" value="static">
+                            <span>静态图</span>
+                        </label>
+                        <label class="category-checkbox">
+                            <input type="checkbox" name="phoebeCategory" value="gif">
+                            <span>动态图</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="upload-hints" style="font-size: 12px; color: #999; margin: -10px 0 15px; line-height: 1.6;">
+                    支持 JPG/PNG/GIF/WebP，单张最大 10MB，每天最多上传 10 张
                 </div>
                 <button type="submit" class="submit-btn">发布菲比</button>
             </form>
@@ -373,14 +509,50 @@
             </div>
             <div class="batch-upload-list" id="batchUploadList"></div>
             <div class="form-group">
-                <label for="batchCategory">分类</label>
-                <select id="batchCategory">
-                    <option value="cute">超可爱</option>
-                    <option value="static">静态图</option>
-                    <option value="gif">动态图</option>
-                </select>
+                <label>分类（可多选）</label>
+                <div class="category-checkboxes" id="batchCategory">
+                    <label class="category-checkbox">
+                        <input type="checkbox" name="batchCategory" value="ai">
+                        <span>AI创作</span>
+                    </label>
+                    <label class="category-checkbox">
+                        <input type="checkbox" name="batchCategory" value="static">
+                        <span>静态图</span>
+                    </label>
+                    <label class="category-checkbox">
+                        <input type="checkbox" name="batchCategory" value="gif">
+                        <span>动态图</span>
+                    </label>
+                </div>
+            </div>
+            <div class="upload-hints" style="font-size: 12px; color: #999; margin: -10px 0 15px; line-height: 1.6;">
+                单次最多 20 张，每张最大 10MB
             </div>
             <button type="button" class="submit-btn" onclick="handleBatchUpload()">批量发布</button>
+        </div>
+    </div>
+
+    <!-- 已发布批量管理模态框（管理员专用） -->
+    <div class="modal-overlay" id="bulkManageModal" onclick="if(event.target === this) closeBulkManageModal()">
+        <div class="modal-content" style="max-width: 800px;">
+            <button class="modal-close" onclick="closeBulkManageModal()">&times;</button>
+            <div class="modal-header">
+                <h2>已发布批量管理</h2>
+                <p style="font-size: 13px; color: #999;">勾选图片后可批量修改标签</p>
+            </div>
+            <div class="bulk-manage-actions">
+                <button type="button" class="review-btn approve" onclick="selectAllMemes()">全选</button>
+                <button type="button" class="review-btn approve" onclick="batchManageTag('featured', true)">设为精选</button>
+                <button type="button" class="review-btn approve" onclick="batchManageTag('recommended', true)">站长推荐</button>
+                <button type="button" class="review-btn" onclick="batchManageCategory('cute', true)" style="background: linear-gradient(135deg, #FF8A65 0%, #FF5722 100%); color: white;">设为超可爱</button>
+                <button type="button" class="review-btn tag-ai" onclick="batchManageCategory('ai', true)" style="background: linear-gradient(135deg, #26C6DA 0%, #00ACC1 100%); color: white;">设为AI创作</button>
+                <button type="button" class="review-btn tag" onclick="batchManageTag('featured', false)">取消精选</button>
+                <button type="button" class="review-btn tag" onclick="batchManageTag('recommended', false)">取消推荐</button>
+                <button type="button" class="review-btn tag" onclick="batchManageCategory('cute', false)">取消超可爱</button>
+                <button type="button" class="review-btn tag" onclick="batchManageCategory('ai', false)">取消AI创作</button>
+                <button type="button" class="review-btn reject" onclick="batchDeleteMemes()">批量删除</button>
+            </div>
+            <div class="bulk-manage-list" id="bulkManageList"></div>
         </div>
     </div>
 
