@@ -690,10 +690,17 @@ function closeLightbox() {
 }
 
 // 上传模态框
-// 注意：上传区域的点击、预览、去重检测已在 index.html 的内联脚本中处理，
-// 这里保留函数入口以兼容原有初始化流程。
 function initUploadModal() {
-    // no-op：避免重复绑定事件导致文件选择框弹出两次
+    const fileInput = document.getElementById('uploadFile');
+    const fileUpload = document.getElementById('fileUploadContainer');
+
+    if (fileUpload && fileInput) {
+        // 点击上传区域触发文件选择（兼容移动端，input 本身已隐藏）
+        fileUpload.addEventListener('click', (e) => {
+            if (e.target === fileInput) return;
+            fileInput.click();
+        });
+    }
 }
 
 // 显示上传模态框

@@ -944,7 +944,24 @@ body::after {
     }
 
     .nav-menu {
+        display: flex;
+        overflow-x: auto;
+        gap: 8px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        max-width: calc(100vw - 150px);
+        margin-left: auto;
+    }
+
+    .nav-menu::-webkit-scrollbar {
         display: none;
+    }
+
+    .nav-menu a {
+        flex-shrink: 0;
+        padding: 8px 14px;
+        font-size: 13px;
+        white-space: nowrap;
     }
 
     .meme-grid {
