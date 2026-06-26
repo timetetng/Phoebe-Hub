@@ -7910,6 +7910,24 @@
       "tags": []
     }
   ],
+  {
+      "id": 523,
+      "title": "异环哈哈",
+      "url": "images/异环哈哈.webp",
+      "category": [
+        "static",
+        "cute"
+      ],
+      "views": 0,
+      "downloads": 0,
+      "date": "2026-06-26",
+      "isGif": false,
+      "hot": 12,
+      "tags": [
+        "featured",
+        "recommended"
+      ]
+  }
   "pending": [],
-  "nextId": 523
+  "nextId": 524
 }
