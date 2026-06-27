@@ -360,6 +360,7 @@
             <div class="sort-bar">
                 <div class="result-count">共找到 <span id="resultCount">0</span> 个菲比</div>
                 <div class="sort-options">
+                    <button class="sort-btn bulk-download-entry" onclick="toggleBulkMode()" title="批量下载">批量下载</button>
                     <button class="sort-btn active" onclick="sortMemes('newest', this)">最新</button>
                     <button class="sort-btn" onclick="sortMemes('hottest', this)">最热</button>
                     <button class="sort-btn" onclick="sortMemes('random', this)">随机</button>
@@ -369,6 +370,23 @@
             <!-- 表情包网格 -->
             <div class="meme-grid" id="memeGrid">
                 <!-- 动态生成 -->
+            </div>
+
+            <!-- 批量下载浮动工具栏 -->
+            <div class="bulk-toolbar" id="bulkToolbar" style="display: none;">
+                <label class="bulk-select-all">
+                    <input type="checkbox" id="bulkSelectAll" onchange="selectAllBulk(this)">
+                    <span>全选</span>
+                </label>
+                <div class="bulk-count">已选 <span id="bulkCount">0</span> 个</div>
+                <div class="bulk-actions">
+                    <button class="bulk-download-btn" onclick="downloadBulkZip()">
+                        下载选中
+                    </button>
+                    <button class="bulk-cancel-btn" onclick="toggleBulkMode()">
+                        取消
+                    </button>
+                </div>
             </div>
         </main>
 
@@ -509,6 +527,7 @@
         <img src="images/top.png" alt="菲比" onerror="this.src='https://via.placeholder.com/200x200/7B6BC6/FFFFFF?text=菲比'" />
     </div>
 
+    <script src="js/jszip.min.js"></script>
     <script src="js/main.js"></script>
 
 </body>

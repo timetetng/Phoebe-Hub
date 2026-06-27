@@ -1775,3 +1775,212 @@ body::after {
     font-size: 14px;
     font-weight: 700;
 }
+
+/* ===== 批量下载 ===== */
+.bulk-download-entry {
+    background: linear-gradient(135deg, #FFE066 0%, #FAB005 100%);
+    color: #5c4b00;
+    box-shadow: 0 4px 15px rgba(250, 176, 5, 0.25);
+}
+
+.bulk-download-entry:hover,
+.bulk-download-entry.active {
+    background: linear-gradient(135deg, #FAB005 0%, #F59E0B 100%);
+    color: #fff;
+}
+
+.bulk-toolbar {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 22px;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(183, 148, 246, 0.25);
+    border-radius: 50px;
+    box-shadow: 0 12px 40px rgba(159, 122, 234, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.6);
+    font-weight: 700;
+    animation: slideUp 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes slideUp {
+    from { transform: translateX(-50%) translateY(30px); opacity: 0; }
+    to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+.bulk-select-all {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: var(--text-dark);
+    font-size: 14px;
+    user-select: none;
+}
+
+.bulk-select-all input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.bulk-count {
+    color: var(--text-light);
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.bulk-count span {
+    color: var(--primary);
+    font-weight: 900;
+    font-size: 16px;
+}
+
+.bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.bulk-download-btn,
+.bulk-cancel-btn {
+    border: none;
+    border-radius: 30px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    font-family: inherit;
+    white-space: nowrap;
+}
+
+.bulk-download-btn {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: var(--white);
+    box-shadow: 0 4px 15px rgba(159, 122, 234, 0.3);
+}
+
+.bulk-download-btn:hover {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 8px 25px rgba(159, 122, 234, 0.45);
+}
+
+.bulk-download-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.bulk-cancel-btn {
+    background: rgba(183, 148, 246, 0.1);
+    color: var(--text-light);
+}
+
+.bulk-cancel-btn:hover {
+    background: rgba(183, 148, 246, 0.2);
+    color: var(--text-dark);
+}
+
+/* 卡片复选框 */
+.meme-card.bulk-mode {
+    cursor: default;
+}
+
+.meme-card.bulk-selected {
+    box-shadow: 0 0 0 3px var(--primary), 0 16px 48px rgba(159, 122, 234, 0.22);
+    border-color: var(--primary);
+}
+
+.meme-card.bulk-selected::after {
+    opacity: 1;
+    height: 6px;
+}
+
+.bulk-checkbox {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.92);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.bulk-checkbox:hover {
+    transform: scale(1.08);
+    background: var(--white);
+}
+
+.bulk-checkbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+    cursor: pointer;
+    margin: 0;
+}
+
+/* 批量下载小屏适配 */
+@media (max-width: 768px) {
+    .bulk-toolbar {
+        bottom: 16px;
+        left: 12px;
+        right: 12px;
+        transform: none;
+        border-radius: 24px;
+        padding: 12px 16px;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        animation: slideUpMobile 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes slideUpMobile {
+        from { transform: translateY(30px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+
+    .bulk-select-all span,
+    .bulk-count {
+        font-size: 13px;
+    }
+
+    .bulk-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .bulk-download-btn,
+    .bulk-cancel-btn {
+        padding: 8px 14px;
+        font-size: 13px;
+        flex: 1;
+        text-align: center;
+    }
+
+    .bulk-checkbox {
+        top: 8px;
+        left: 8px;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+    }
+
+    .bulk-checkbox input[type="checkbox"] {
+        width: 14px;
+        height: 14px;
+    }
+}

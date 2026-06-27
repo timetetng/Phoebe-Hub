@@ -6,6 +6,8 @@ let currentCategory = 'all';
 let currentSort = 'newest';
 let searchQuery = '';
 let dataLoaded = false;
+let bulkModeOpen = false;
+let bulkSelectedIds = new Set();
 
 const CATEGORY_LABELS = {
     'cute': '超可爱',
@@ -61,9 +63,37 @@ async function loadData() {
     } catch (e) {
         console.error('加载数据失败:', e);
         useLocalFallback();
+        showLoadError();
     }
     renderMemes();
     updateHotList();
+}
+
+function showLoadError() {
+    const grid = document.getElementById('memeGrid');
+    if (!grid) return;
+    const existing = document.getElementById('loadErrorBanner');
+    if (existing) existing.remove();
+
+    const banner = document.createElement('div');
+    banner.id = 'loadErrorBanner';
+    banner.style.cssText = `
+        grid-column: 1/-1;
+        background: rgba(244, 67, 54, 0.1);
+        border: 1px solid rgba(244, 67, 54, 0.3);
+        border-radius: 16px;
+        padding: 16px 20px;
+        margin-bottom: 20px;
+        color: #C62828;
+        font-weight: 700;
+        font-size: 14px;
+        line-height: 1.6;
+    `;
+    banner.innerHTML = `
+        本地数据加载失败，当前只显示示例图片。<br>
+        请使用本地服务器预览：在仓库根目录运行 <code style="background:rgba(0,0,0,0.05);padding:2px 6px;border-radius:4px;">python -m http.server 8000</code>，然后访问 <code style="background:rgba(0,0,0,0.05);padding:2px 6px;border-radius:4px;">http://localhost:8000</code>
+    `;
+    grid.insertBefore(banner, grid.firstChild);
 }
 
 // 备用数据
@@ -238,11 +268,20 @@ function renderMemes() {
         const optimizedUrl = getOptimizedUrl(meme.url);
         const fullUrl = meme.url;
         const safeTitle = escapeHtml(meme.title || '未命名');
+        const isSelected = bulkSelectedIds.has(meme.id);
+        const checkboxHtml = bulkModeOpen ? `
+            <label class="bulk-checkbox" onclick="event.stopPropagation()">
+                <input type="checkbox" ${isSelected ? 'checked' : ''}
+                    onchange="toggleBulkSelection(${meme.id}, this.checked)"
+                    onclick="event.stopPropagation()">
+            </label>
+        ` : '';
         return `
-        <div class="meme-card" data-id="${meme.id}">
+        <div class="meme-card ${bulkModeOpen ? 'bulk-mode' : ''} ${isSelected ? 'bulk-selected' : ''}" data-id="${meme.id}">
+            ${checkboxHtml}
             <img data-src="${optimizedUrl}" data-full="${fullUrl}" alt="${safeTitle}" class="meme-image ${meme.isGif ? 'gif-image' : ''} lazy" loading="lazy"
                 onerror="this.src='https://via.placeholder.com/300x300/B794F6/FFFFFF?text=${encodeURIComponent(meme.title || '菲比')}'"
-                onclick="openLightbox('${fullUrl}')"
+                onclick="handleMemeClick(event, '${fullUrl}', ${meme.id})"
                 onload="this.classList.add('loaded')">
             <div class="meme-info">
                 <div class="meme-title">${safeTitle}</div>
@@ -267,6 +306,11 @@ function renderMemes() {
     document.querySelectorAll('.meme-image.lazy').forEach(img => {
         if (window.observeImage) window.observeImage(img);
     });
+
+    // 同步批量下载全选状态
+    if (bulkModeOpen) {
+        updateBulkSelectAllState();
+    }
 }
 
 // 渲染表情包的标签
@@ -362,6 +406,169 @@ async function downloadMeme(id) {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    }
+}
+
+// ===== 批量下载 =====
+function toggleBulkMode() {
+    bulkModeOpen = !bulkModeOpen;
+    if (!bulkModeOpen) {
+        bulkSelectedIds.clear();
+    }
+    const toolbar = document.getElementById('bulkToolbar');
+    if (toolbar) toolbar.style.display = bulkModeOpen ? 'flex' : 'none';
+    const selectAll = document.getElementById('bulkSelectAll');
+    if (selectAll) selectAll.checked = false;
+    updateBulkCount();
+    renderMemes();
+}
+
+function handleMemeClick(event, url, id) {
+    if (bulkModeOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleBulkSelection(id, !bulkSelectedIds.has(id));
+        return;
+    }
+    openLightbox(url);
+}
+
+function toggleBulkSelection(id, checked) {
+    if (checked) {
+        bulkSelectedIds.add(id);
+    } else {
+        bulkSelectedIds.delete(id);
+    }
+    renderMemes();
+    updateBulkCount();
+    updateBulkSelectAllState();
+}
+
+function updateBulkSelectAllState() {
+    const grid = document.getElementById('memeGrid');
+    if (!grid) return;
+    const visibleCards = grid.querySelectorAll('.meme-card');
+    const selectAll = document.getElementById('bulkSelectAll');
+    if (!selectAll) return;
+    if (visibleCards.length === 0) {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+        return;
+    }
+    const visibleIds = Array.from(visibleCards).map(card => parseInt(card.dataset.id));
+    const selectedVisible = visibleIds.filter(id => bulkSelectedIds.has(id));
+    if (selectedVisible.length === 0) {
+        selectAll.checked = false;
+        selectAll.indeterminate = false;
+    } else if (selectedVisible.length === visibleIds.length) {
+        selectAll.checked = true;
+        selectAll.indeterminate = false;
+    } else {
+        selectAll.checked = false;
+        selectAll.indeterminate = true;
+    }
+}
+
+function selectAllBulk(checkbox) {
+    const grid = document.getElementById('memeGrid');
+    if (!grid) return;
+    const visibleCards = grid.querySelectorAll('.meme-card');
+    const visibleIds = Array.from(visibleCards).map(card => parseInt(card.dataset.id));
+    if (checkbox.checked) {
+        visibleIds.forEach(id => bulkSelectedIds.add(id));
+    } else {
+        visibleIds.forEach(id => bulkSelectedIds.delete(id));
+    }
+    renderMemes();
+    updateBulkCount();
+}
+
+function updateBulkCount() {
+    const countEl = document.getElementById('bulkCount');
+    if (countEl) countEl.textContent = bulkSelectedIds.size;
+}
+
+function sanitizeFileName(name) {
+    return String(name || '菲比')
+        .replace(/[\\/:*?"<>|]/g, '_')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 80) || '菲比';
+}
+
+function getExtensionFromUrl(url, isGif) {
+    if (isGif) return 'gif';
+    const match = String(url || '').match(/\.([a-zA-Z0-9]+)(?:\?|$)/);
+    if (match) return match[1].toLowerCase();
+    return 'jpg';
+}
+
+async function downloadBulkZip() {
+    if (bulkSelectedIds.size === 0) {
+        showToast('请先选择要下载的菲比 ~');
+        return;
+    }
+    if (typeof JSZip === 'undefined') {
+        showToast('下载组件加载中，请稍后重试');
+        return;
+    }
+
+    const selectedMemes = memesData.filter(m => bulkSelectedIds.has(m.id));
+    showToast(`开始打包 ${selectedMemes.length} 个菲比...`);
+
+    const zip = new JSZip();
+    const usedNames = new Set();
+    let successCount = 0;
+    let failCount = 0;
+
+    const fetchPromises = selectedMemes.map(async (meme) => {
+        try {
+            const response = await fetch(meme.url);
+            if (!response.ok) throw new Error('fetch failed');
+            const blob = await response.blob();
+
+            let baseName = sanitizeFileName(meme.title || '菲比');
+            let ext = getExtensionFromUrl(meme.url, meme.isGif);
+            let fileName = `${baseName}.${ext}`;
+            if (usedNames.has(fileName)) {
+                fileName = `${baseName}_${meme.id}.${ext}`;
+            }
+            if (usedNames.has(fileName)) {
+                fileName = `${baseName}_${meme.id}_${Date.now()}.${ext}`;
+            }
+            usedNames.add(fileName);
+            zip.file(fileName, blob);
+            successCount++;
+        } catch (e) {
+            console.error('打包失败:', meme.id, meme.title, e);
+            failCount++;
+        }
+    });
+
+    await Promise.all(fetchPromises);
+
+    if (successCount === 0) {
+        showToast('打包失败，请检查网络后重试');
+        return;
+    }
+
+    try {
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const zipUrl = URL.createObjectURL(zipBlob);
+        const link = document.createElement('a');
+        link.href = zipUrl;
+        link.download = `PhoebeHub_${selectedMemes.length}个菲比_${new Date().toISOString().slice(0, 10)}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(zipUrl), 1000);
+
+        let msg = `成功打包 ${successCount} 个菲比！`;
+        if (failCount > 0) msg += `（${failCount} 个失败）`;
+        showToast(msg);
+    } catch (e) {
+        console.error('生成 zip 失败:', e);
+        showToast('生成压缩包失败，请重试');
     }
 }
 
